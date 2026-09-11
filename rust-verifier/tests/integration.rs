@@ -30,8 +30,14 @@ fn fields() -> Vec<String> {
 #[test]
 fn an_identical_dataset_reconciles_completely() {
     let mut source = BTreeMap::new();
-    source.insert("00127".to_string(), customer("00127", "Amara Chen", "1200.50"));
-    source.insert("00128".to_string(), customer("00128", "Diego Fernandez", "980.00"));
+    source.insert(
+        "00127".to_string(),
+        customer("00127", "Amara Chen", "1200.50"),
+    );
+    source.insert(
+        "00128".to_string(),
+        customer("00128", "Diego Fernandez", "980.00"),
+    );
 
     let destination = source.clone();
     let result = reconcile(&source, &destination, &fields());
@@ -69,9 +75,15 @@ fn an_integer_cast_across_the_dataset_is_reported_row_by_row() {
 #[test]
 fn a_lost_cent_is_reported_even_when_the_identifier_survives() {
     let mut source = BTreeMap::new();
-    source.insert("00127".to_string(), customer("00127", "Amara Chen", "1200.50"));
+    source.insert(
+        "00127".to_string(),
+        customer("00127", "Amara Chen", "1200.50"),
+    );
     let mut destination = BTreeMap::new();
-    destination.insert("00127".to_string(), customer("00127", "Amara Chen", "1200.49"));
+    destination.insert(
+        "00127".to_string(),
+        customer("00127", "Amara Chen", "1200.49"),
+    );
 
     let result = reconcile(&source, &destination, &fields());
     assert_eq!(result.differing.len(), 1);
@@ -83,7 +95,10 @@ fn a_lost_cent_is_reported_even_when_the_identifier_survives() {
 fn a_dropped_row_is_reported_as_missing() {
     let mut source = BTreeMap::new();
     source.insert("00127".to_string(), customer("00127", "Amara Chen", "1.00"));
-    source.insert("00128".to_string(), customer("00128", "Diego Fernandez", "2.00"));
+    source.insert(
+        "00128".to_string(),
+        customer("00128", "Diego Fernandez", "2.00"),
+    );
     let mut destination = BTreeMap::new();
     destination.insert("00127".to_string(), customer("00127", "Amara Chen", "1.00"));
 

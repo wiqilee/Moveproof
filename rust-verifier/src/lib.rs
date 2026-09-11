@@ -311,7 +311,10 @@ mod tests {
         let mut source = BTreeMap::new();
         source.insert("00127".to_string(), row(&[("customer_id", text("00127"))]));
         let mut destination = BTreeMap::new();
-        destination.insert("00127".to_string(), row(&[("customer_id", Value::Int(127))]));
+        destination.insert(
+            "00127".to_string(),
+            row(&[("customer_id", Value::Int(127))]),
+        );
 
         let result = reconcile(&source, &destination, &fields);
         assert_eq!(result.differing.len(), 1);
