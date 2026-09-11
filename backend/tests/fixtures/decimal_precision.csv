@@ -1,0 +1,4 @@
+customer_id,full_name,email,signup_date,balance,region
+00201,Lena Fischer,lena.f@example.com,2024-03-16,0.10,EMEA
+00202,Tomas Vega,tomas.v@example.com,2024-03-16,0.20,LATAM
+00203,Nia Adeyemi,nia.a@example.com,2024-03-16,1200.4999,EMEA

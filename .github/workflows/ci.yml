@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend, type check, lint and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+
+  rust:
+    name: Rust verifier
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust-verifier
+      - run: cargo fmt --check
+        working-directory: rust-verifier
+      - run: cargo clippy -- -D warnings
+        working-directory: rust-verifier
+      - run: cargo test
+        working-directory: rust-verifier
+      - run: cargo build --release
+        working-directory: rust-verifier
+      - uses: actions/upload-artifact@v4
+        with:
+          name: moveproof-verifier
+          path: rust-verifier/target/release/moveproof-verifier
+
+  backend:
+    name: Backend, core, database and parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: rust
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: moveproof
+          POSTGRES_PASSWORD: moveproof_ci
+          POSTGRES_DB: moveproof
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U moveproof -d moveproof"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://moveproof:moveproof_ci@localhost:5432/moveproof
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r backend/requirements-dev.txt
+
+      # The Rust binary from the previous job, so the parity tests run rather
+      # than skip and canonical reconciliation is actually exercised.
+      - uses: actions/download-artifact@v4
+        with:
+          name: moveproof-verifier
+          path: rust-verifier/target/release
+      - run: chmod +x rust-verifier/target/release/moveproof-verifier
+
+      - name: Apply the schema
+        run: python -m app.db.migrations
+        working-directory: backend
+
+      - name: Core suite, no database
+        run: pytest -v -m "not database"
+        working-directory: backend
+
+      - name: Database and API suite
+        run: pytest -v -m database
+        working-directory: backend
+
+  repository:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+
+      # The hackathon rules require a detectable open source licence.
+      - name: Verify the licence
+        run: |
+          test -f LICENSE || { echo "LICENSE is missing"; exit 1; }
+          grep -q "MIT License" LICENSE || { echo "LICENSE is not the expected MIT text"; exit 1; }
+
+      - name: Fail on committed secrets
+        run: |
+          if git ls-files | grep -E '(^|/)\.env$|\.env\.local$|service-account.*\.json$'; then
+            echo "A secret file is tracked in git"
+            exit 1
+          fi
+          if grep -rIn --exclude-dir=.git -E 'NEBIUS_API_KEY\s*=\s*["'"'"'][A-Za-z0-9_-]{12,}' . ; then
+            echo "A literal API key appears in the tree"
+            exit 1
+          fi
+          echo "No tracked secrets found"
+
+      - name: Warn about placeholder links
+        run: |
+          if grep -rn "REPLACE_WITH" src/ README.md 2>/dev/null; then
+            echo "::warning::Placeholder links remain. Replace them in src/lib/site.ts before submitting."
+          else
+            echo "No placeholder links found"
+          fi

@@ -1,0 +1,80 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# Testing
+/coverage
+.coverage
+htmlcov/
+
+# Next.js build output
+/.next/
+/out/
+next-env.d.ts.timestamp
+
+# Production build
+/build
+/dist
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+logs/
+*.log
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Operating system
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Python backend
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Rust verifier
+target/
+
+# Local data and uploads
+tmp/
+uploads/
+*.sqlite
+*.db
+
+# Secrets and credentials
+*.pem
+*-service-account.json
+gcp-credentials.json
+
+# Local submission checklist
+REPLACE-BEFORE-SUBMIT.md

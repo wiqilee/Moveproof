@@ -1,0 +1,28 @@
+[package]
+name = "moveproof-verifier"
+version = "0.1.0"
+edition = "2021"
+description = "Canonical row serialization, stable hashing and reconciliation for MoveProof"
+license = "MIT"
+
+[lib]
+name = "moveproof_verifier"
+path = "src/lib.rs"
+
+[[bin]]
+name = "moveproof-verifier"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+sha2 = "0.10"
+unicode-normalization = "0.1"
+rust_decimal = "1.36"
+
+[dev-dependencies]
+proptest = "1.5"
+
+[profile.release]
+opt-level = 3
+lto = true

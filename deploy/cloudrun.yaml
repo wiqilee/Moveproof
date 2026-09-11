@@ -1,0 +1,78 @@
+# Cloud Run service definition for the MoveProof backend.
+#
+# Apply with:
+#   gcloud run services replace deploy/cloudrun.yaml --region=$GCP_REGION
+#
+# Secrets are referenced, never inlined. Create them first:
+#   echo -n "$NEBIUS_API_KEY" | gcloud secrets create nebius-api-key --data-file=-
+#   echo -n "$DATABASE_URL"   | gcloud secrets create database-url   --data-file=-
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: moveproof-backend
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        # A hard ceiling on instances. Cloud Run bills per instance second, so
+        # this is the control that actually caps spend, unlike a budget alert.
+        autoscaling.knative.dev/maxScale: "4"
+        # Scaling to zero is deliberate. A migration workspace is used in
+        # bursts, and a cold start costs a second or two rather than money.
+        autoscaling.knative.dev/minScale: "0"
+        run.googleapis.com/cloudsql-instances: PROJECT_ID:REGION:moveproof
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      containerConcurrency: 20
+      timeoutSeconds: 300
+      serviceAccountName: moveproof-backend@PROJECT_ID.iam.gserviceaccount.com
+      containers:
+        - image: REGION-docker.pkg.dev/PROJECT_ID/moveproof/backend:latest
+          ports:
+            - name: http1
+              containerPort: 8080
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          env:
+            - name: MAX_UPLOAD_BYTES
+              value: "26214400"
+            - name: REQUEST_TIMEOUT_SECONDS
+              value: "60"
+            - name: MODEL_SAMPLE_ROWS
+              value: "5"
+            - name: CORS_ORIGINS
+              value: "https://moveproof.vercel.app"
+            - name: NEBIUS_BASE_URL
+              value: "https://api.studio.nebius.com/v1"
+            - name: NEBIUS_MODEL_ID
+              value: "REPLACE_WITH_MODEL_ID_FROM_SMOKE_TEST"
+            - name: MOVEPROOF_VERIFIER_BIN
+              value: "/usr/local/bin/moveproof-verifier"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: database-url
+                  key: latest
+            - name: NEBIUS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nebius-api-key
+                  key: latest
+          startupProbe:
+            httpGet:
+              path: /health
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health
+            periodSeconds: 30
+  traffic:
+    - percent: 100
+      latestRevision: true

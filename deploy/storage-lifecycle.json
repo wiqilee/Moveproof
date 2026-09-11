@@ -1,0 +1,14 @@
+{
+  "_comment": "Cloud Storage lifecycle for uploaded sources and generated artefacts. Apply with: gsutil lifecycle set deploy/storage-lifecycle.json gs://BUCKET_NAME",
+  "rule": [
+    {
+      "action": { "type": "Delete" },
+      "condition": { "age": 90 },
+      "_comment": "Uploaded spreadsheets are deleted after 90 days. Adjust to match your retention policy before handling real customer data."
+    },
+    {
+      "action": { "type": "AbortIncompleteMultipartUpload" },
+      "condition": { "age": 1 }
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+customer_id,full_name,email,signup_date,balance,region
+00127,Amara Chen,amara.chen@example.com,2024-03-16,1200.50,APAC
+00130,,sam.oyelaran@example.com,2024-03-17,75.00,EMEA

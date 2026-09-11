@@ -1,0 +1,4 @@
+customer_id,full_name,email,signup_date,balance,region
+00127,Amara Chen,amara.chen@example.com,2024-03-16,1200.50,APAC
+00128,Diego Fernandez,diego.f@example.com,2024-03-15,980.00,EMEA
+00128,Diego Fernandez,diego.fernandez@example.com,2024-03-15,1450.00,EMEA

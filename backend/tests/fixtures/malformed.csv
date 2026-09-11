@@ -1,0 +1,2 @@
+customer_id,full_name,email,signup_date,balance,region
+00601,Extra Field,extra@example.com,2024-03-16,10.00,NA,unexpected

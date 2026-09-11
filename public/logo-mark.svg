@@ -1,0 +1,8 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MoveProof mark">
+  <rect width="64" height="64" rx="16" fill="#172554"/>
+  <rect x="15" y="18" width="34" height="5" rx="2.5" fill="#FFFFFF"/>
+  <rect x="15" y="29" width="26" height="5" rx="2.5" fill="#FFFFFF" fill-opacity="0.72"/>
+  <rect x="15" y="40" width="18" height="5" rx="2.5" fill="#FFFFFF" fill-opacity="0.45"/>
+  <circle cx="45" cy="45" r="13" fill="#3B82F6" stroke="#172554" stroke-width="4"/>
+  <path d="M39.5 45.2l3.8 3.8 7.2-7.6" stroke="#FFFFFF" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

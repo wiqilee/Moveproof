@@ -1,0 +1,26 @@
+# Local PostgreSQL for development and tests.
+#
+# The staging and destination schemas live in the same instance. That is
+# deliberate for the MVP: a single transaction can then move verified rows from
+# staging into the destination, which is what makes commit atomic.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: moveproof-postgres
+    environment:
+      POSTGRES_USER: moveproof
+      POSTGRES_PASSWORD: moveproof_local_only
+      POSTGRES_DB: moveproof
+    ports:
+      - "5433:5432"
+    volumes:
+      - moveproof_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moveproof -d moveproof"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  moveproof_pgdata:

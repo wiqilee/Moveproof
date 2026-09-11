@@ -1,0 +1,164 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Colour tokens as "R G B" triplets so Tailwind can compose an alpha channel.
+ * Light is the default. Dark is applied by adding .dark to <html>, which the
+ * theme script does before first paint.
+ */
+:root {
+  --color-canvas: 247 248 250;
+  --color-surface: 255 255 255;
+  --color-muted: 241 245 249;
+  --color-ink: 17 24 39;
+  --color-ink-soft: 100 116 139;
+  --color-line: 229 231 235;
+
+  --color-navy: 23 37 84;
+  --color-on-navy: 255 255 255;
+  --color-brand: 59 130 246;
+  --color-on-brand: 255 255 255;
+  --color-brand-soft: 239 246 255;
+
+  --color-ok: 21 128 61;
+  --color-ok-soft: 240 253 244;
+  --color-warn: 180 83 9;
+  --color-warn-soft: 255 251 235;
+  --color-bad: 185 28 28;
+  --color-bad-soft: 254 242 242;
+  --color-neutral: 71 85 105;
+  --color-neutral-soft: 241 245 249;
+
+  --shadow-rgb: 23 37 84;
+  color-scheme: light;
+}
+
+/*
+ * Dark is not the light palette inverted. Saturated text colours are lifted so
+ * they stay legible on a dark surface, and the soft backgrounds become deep
+ * tints rather than near white, which would glare.
+ */
+.dark {
+  --color-canvas: 11 17 32;
+  --color-surface: 17 24 39;
+  --color-muted: 31 41 55;
+  --color-ink: 248 250 252;
+  --color-ink-soft: 148 163 184;
+  --color-line: 51 65 85;
+
+  --color-navy: 37 99 235;
+  --color-on-navy: 255 255 255;
+  --color-brand: 96 165 250;
+  --color-on-brand: 11 17 32;
+  --color-brand-soft: 30 41 59;
+
+  --color-ok: 74 222 128;
+  --color-ok-soft: 20 45 32;
+  --color-warn: 251 191 36;
+  --color-warn-soft: 52 38 12;
+  --color-bad: 248 113 113;
+  --color-bad-soft: 60 22 22;
+  --color-neutral: 148 163 184;
+  --color-neutral-soft: 31 41 55;
+
+  --shadow-rgb: 0 0 0;
+  color-scheme: dark;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  background: rgb(var(--color-canvas));
+  color: rgb(var(--color-ink));
+  font-family: var(--font-sans), Inter, system-ui, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Figures in tables and metrics line up column by column. */
+table,
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Keyboard focus stays visible in both themes. Status is never carried by
+   colour alone in this product, and neither is focus. */
+:focus-visible {
+  outline: 2px solid rgb(var(--color-brand));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: rgb(var(--color-brand) / 0.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+  /* Anchored sections clear the sticky navigation bar. */
+  scroll-padding-top: 4.5rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 1.1s linear infinite;
+}
+
+/* Wide tables scroll inside their own container so the page body never
+   scrolls sideways on a phone. */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Respect the notch and the home indicator on a phone. */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* A dialog must never scroll the page behind it. */
+body[data-scroll-locked="true"] {
+  overflow: hidden;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  :root {
+    --color-canvas: 255 255 255;
+    --color-surface: 255 255 255;
+  }
+
+  body {
+    background: #ffffff;
+  }
+
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+}

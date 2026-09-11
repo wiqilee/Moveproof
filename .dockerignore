@@ -1,0 +1,16 @@
+**/node_modules
+**/.next
+**/.venv
+**/__pycache__
+**/*.pyc
+**/target
+.git
+.github
+.vscode
+**/.env
+**/.env.local
+**/*.zip
+docs
+public
+src
+tests/fixtures/generated
