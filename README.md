@@ -4,9 +4,9 @@
 
 ### Move data. Prove what changed.
 
-An AI assisted data migration workspace that verifies its own work and shows you the evidence.
+An AI-assisted data migration workspace that verifies its own work and shows you the evidence.
 
-[![CI](https://github.com/wiqi-lee/moveproof/actions/workflows/ci.yml/badge.svg)](https://github.com/wiqi-lee/moveproof/actions/workflows/ci.yml)
+[![CI](https://github.com/wiqilee/Moveproof/actions/workflows/ci.yml/badge.svg)](https://github.com/wiqilee/Moveproof/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-172554.svg)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-14-111827.svg)](https://nextjs.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-15803D.svg)](https://fastapi.tiangolo.com)
@@ -14,7 +14,7 @@ An AI assisted data migration workspace that verifies its own work and shows you
 
 [Live app](https://moveproof.vercel.app) · [Demo video](https://youtube.com/watch?v=REPLACE_WITH_DEMO_ID) · [Devpost entry](https://devpost.com/software/moveproof) · [Hackathon](https://nebiusglobalaihackathon.devpost.com/)
 
-Built by [Wiqi Lee](https://x.com/wiqi_lee) for the Nebius x NVIDIA Global AI Hackathon 2026
+Built by [Wiqi Lee](https://x.com/wiqi_lee) for the Nebius x NVIDIA Global AI Hackathon 2026.
 
 </div>
 
@@ -47,7 +47,7 @@ Built by [Wiqi Lee](https://x.com/wiqi_lee) for the Nebius x NVIDIA Global AI Ha
 
 ## The problem
 
-A spreadsheet holds a customer id of `00127`. Someone imports it into a database. The import reports success. Every row lands. No error appears anywhere in the log.
+A spreadsheet holds a customer ID of `00127`. Someone imports it into a database. The import reports success. Every row lands. No error appears anywhere in the log.
 
 The value in the database is now `127`.
 
@@ -75,7 +75,7 @@ Spreadsheet data goes into a structured database. The transformation is proposed
 
 Each clause is a constraint in the codebase rather than a slogan.
 
-**AI proposes.** An NVIDIA model served through Nebius Token Factory reads the source schema and a five row sample, then returns a typed mapping proposal. It never emits SQL, shell commands or code.
+**AI proposes.** An NVIDIA model served through Nebius Token Factory reads the source schema and a five-row sample, then returns a typed mapping proposal. It never emits SQL, shell commands or code.
 
 **Validated code executes.** Every proposed operation is checked against an allowlist before a human sees it. `approve()` takes a validation result rather than a plan, so a proposal cannot become executable merely by calling a function on it. Lossy operations need an acknowledgement recorded per column by name. The executor refuses a plan whose mappings are not marked approved, which closes the path where a caller builds an approved-looking plan by hand.
 
@@ -93,29 +93,37 @@ Human approvals recorded in a report are audit entries. They are not cryptograph
 
 ## Honest status
 
-The distinction between written and verified matters more here than usual, so it is stated first.
+MoveProof distinguishes between implemented, tested, and externally integrated functionality. That distinction matters for a product built around verifiable claims.
 
-| Component | Implemented | Tested | How to verify it yourself |
+| Component | Implemented | Verification status | How to verify it |
 | --- | --- | --- | --- |
-| CSV and XLSX parsing | Yes | **Yes, executed** | `make test-core` |
-| Plan validation and the operation allowlist | Yes | **Yes, executed** | `make test-core` |
-| Approval gate, negative cases | Yes | **Yes, executed** | `make test-core` |
-| Deterministic executor | Yes | **Yes, executed** | `make test-core` |
-| Verification engine | Yes | **Yes, executed** | `make test-core` |
-| Canonical hashing, Python side | Yes | **Yes, executed** | `make test-core` |
-| Synthetic generator and manifest | Yes | **Yes, executed** | `make test-core` |
-| PDF and HTML rendering | Yes | **Yes, executed** | `make test-core` |
-| Rust verifier | Yes | **Not executed**, no toolchain during development | `make rust rust-test` |
-| Python and Rust parity | Yes | **Skipped** without the binary | `make rust` then `make test-core` |
-| PostgreSQL staging, idempotency, commit gate | Yes | **Not executed** | `make db-up migrate test-db` |
-| FastAPI, all endpoints | Yes | **Not executed** | `make db-up migrate test-db` |
-| Frontend to backend workflow | Yes | **Not executed** | Run both and walk the demo |
-| Live Nebius inference | Yes | **Blocked**, needs a credential | `make smoke` |
-| Deployment | Configured | **Not deployed** | `deploy/DEPLOYMENT.md` |
+| CSV and XLSX parsing | Yes | **Verified** | `make test-core` |
+| Plan validation and operation allowlist | Yes | **Verified** | `make test-core` |
+| Approval gates and negative cases | Yes | **Verified** | `make test-core` |
+| Deterministic executor | Yes | **Verified** | `make test-core` |
+| Verification engine | Yes | **Verified** | `make test-core` |
+| Canonical hashing, Python side | Yes | **Verified** | `make test-core` |
+| Python and Rust hashing parity | Yes | **Verified** | `make rust` then `make test-core` |
+| Synthetic generator and manifest | Yes | **Verified** | `make test-core` |
+| PDF and HTML rendering | Yes | **Verified** | `make test-core` |
+| PostgreSQL staging and commit gates | Yes | **Verified locally and in CI** | `make test-db` |
+| Idempotency and conflict handling | Yes | **Verified locally and in CI** | `make test-db` |
+| FastAPI endpoints and status taxonomy | Yes | **Verified locally and in CI** | `make test-db` |
+| Rust verifier | Yes | **Verified in CI** | `make rust-test` |
+| Frontend type checking, linting, and build | Yes | **Verified in CI** | `npm run typecheck && npm run lint && npm run build` |
+| Frontend-to-backend workflow | Yes | **Running locally; final browser walkthrough pending** | Start both services and walk the demo |
+| Live Nebius Token Factory inference | Yes | **Pending live credential integration** | `make smoke` |
+| Production deployment | Configured | **In progress** | See `deploy/DEPLOYMENT.md` |
 
-**Executed during development: 74 tests passed, 0 failed, 19 skipped.** The skips are the parity tests, which need the Rust binary.
+Latest local verification:
 
-**Not executed: 50 database and API tests, 16 Rust tests, and the entire frontend to backend path.** Their code is written and their commands are below, but none of it has been run. Treat every row marked "not executed" as unverified until you have run it and seen it pass.
+- `make test-core`: **96 passed, 1 skipped, 0 failed**
+- `make test-db`: **80 passed, 0 failed**
+- GitHub Actions: **frontend, backend with PostgreSQL, Rust verifier, and repository hygiene all passing**
+
+The single skip in the core suite is the branch that only runs when the Rust binary is absent, and it skips because the binary is present.
+
+Live Nebius inference and production deployment are listed separately because they depend on external credentials and hosted infrastructure.
 
 ---
 
@@ -238,9 +246,15 @@ pytest tests/test_reports.py -v      # PDF and HTML rendering
 | `test_canonical.py` | Canonicalisation rules, and parity between Python and Rust | Rust for parity |
 | `test_reports.py` | Real PDF bytes, page count, HTML escaping, three formats agreeing | reportlab |
 | `test_database.py` | Staging, idempotency, conflicts, the commit gate, rollback | PostgreSQL |
-| `test_api.py` | Every endpoint, and the full workflow over HTTP | PostgreSQL |
+| `test_api.py` | Every endpoint, the full workflow over HTTP, and the status taxonomy | PostgreSQL |
 
 A test that needs something unavailable skips with a reason rather than passing quietly.
+
+### Test isolation
+
+The API suite drives the real service, so every request commits exactly as production does. Without cleanup, one test's committed rows become the next test's destination conflict, and a correct fail-closed refusal starts looking like a bug.
+
+`tests/conftest.py` truncates the destination and the control plane on a separate autocommit connection before and after every database-marked test. The isolation lives in the test lifecycle. No production code truncates anything, and the fail-closed conflict policy is never softened to make a test pass.
 
 ---
 
@@ -254,7 +268,7 @@ make fixtures    # 100, 1000 and 10000 row files with hazards
 python scripts/generate_fixtures.py --out tests/fixtures/generated --sizes 500 --clean
 ```
 
-A fixed seed means the same size always produces byte identical output. Each file gets a `.manifest.json` recording which rows carry which hazard.
+A fixed seed means the same size always produces byte-identical output. Each file gets a `.manifest.json` recording which rows carry which hazard.
 
 **The manifest is test metadata.** The application never opens it. Tests load it to know the correct answer, then assert that the pipeline found the same thing by executing real checks. `tests/test_generated.py` is written that way throughout.
 
@@ -266,7 +280,7 @@ Twelve hazard kinds are planted: leading zero identifiers, exact duplicates, con
 2. On the mapping step choose the **legacy import profile**. It casts `customer_id` to an integer, exactly as an older importer would.
 3. The approve button stays disabled until you tick the acknowledgement. Tick it and approve.
 4. Stage and run, then run verification.
-5. Identifier preservation fails. Every zero padded identifier is damaged, not just the first, and the check reports the true count rather than the size of the evidence sample.
+5. Identifier preservation fails. Every zero-padded identifier is damaged, not just the first, and the check reports the true count rather than the size of the evidence sample.
 6. Try to commit. It is refused.
 7. Open the repair proposal. It shows the plan diff and explains that the rerun reparses the original upload, because a leading zero destroyed by an integer cast cannot be recovered from the integer.
 8. Approve the revision. It reruns and reverifies, and identifier preservation passes.
@@ -377,7 +391,7 @@ sequenceDiagram
     API->>DB: store plan v1, immutable
     API->>DB: reparse the stored original bytes, stage rows
     DB->>V: staged rows read back
-    V-->>API: identifier preservation failed on every zero padded id
+    V-->>API: identifier preservation failed on every zero-padded id
     U->>API: request a repair proposal
     API-->>U: plan diff v1 to v2, rerun reads the original file
     U->>API: approve plan v2
@@ -432,85 +446,194 @@ erDiagram
 ## Project structure
 
 ```
-moveproof/
-├── src/                                  Next.js frontend
+Moveproof/
+├── src/                                    Next.js 14 frontend, App Router
 │   ├── app/
-│   │   ├── page.tsx                      Public landing page
-│   │   ├── layout.tsx                    Fonts, metadata, no-flash theme script
-│   │   ├── globals.css                   Colour tokens, light and dark
-│   │   └── app/                          The workspace
-│   │       ├── layout.tsx                Provider, navigation, connection banner
-│   │       ├── page.tsx                  Overview, real migration records
-│   │       ├── migrations/page.tsx       Filterable migration index
-│   │       ├── migrations/new/page.tsx   Four step wizard
-│   │       ├── migrations/[id]/run/      Execution
-│   │       ├── migrations/[id]/verification/
-│   │       ├── migrations/[id]/repair/
-│   │       ├── migrations/[id]/report/
-│   │       ├── reports/page.tsx          Report index with working exports
-│   │       ├── settings/page.tsx         Theme, and real backend capabilities
-│   │       └── docs/page.tsx             Product documentation
+│   │   ├── layout.tsx                      Fonts, metadata, no-flash theme script
+│   │   ├── globals.css                     Colour tokens for light and dark
+│   │   ├── page.tsx                        Public landing page
+│   │   └── app/                            The workspace
+│   │       ├── layout.tsx                  Provider, navigation, connection banner
+│   │       ├── page.tsx                    Overview, real migration records
+│   │       ├── docs/
+│   │       │   └── page.tsx                Product documentation
+│   │       ├── reports/
+│   │       │   └── page.tsx                Report index with working exports
+│   │       ├── settings/
+│   │       │   └── page.tsx                Theme and live backend capabilities
+│   │       └── migrations/
+│   │           ├── page.tsx                Filterable migration index
+│   │           ├── new/
+│   │           │   └── page.tsx            Four step wizard
+│   │           └── [id]/
+│   │               ├── run/page.tsx        Execution
+│   │               ├── verification/page.tsx
+│   │               ├── repair/page.tsx
+│   │               └── report/page.tsx     Evidence report
 │   ├── components/
-│   │   ├── ui/                           Button, StatusPill, Stepper, dialogs, theme toggle
-│   │   ├── landing/                      Hero with the interactive preview, sections, footer
-│   │   ├── workspace/                    Sidebar with drawer, top bar, command palette
-│   │   └── migration/                    Wizard steps, verification, repair, evidence report
+│   │   ├── command/
+│   │   │   ├── CommandPaletteProvider.tsx  Mounted once at the root
+│   │   │   ├── CommandPalette.tsx          The panel, controlled
+│   │   │   └── CommandTrigger.tsx          Visible entry point
+│   │   ├── landing/
+│   │   │   ├── LandingNav.tsx
+│   │   │   ├── Hero.tsx
+│   │   │   ├── HeroPreview.tsx             The interactive synthetic preview
+│   │   │   ├── Sections.tsx
+│   │   │   ├── SocialIcons.tsx
+│   │   │   └── Footer.tsx
+│   │   ├── migration/
+│   │   │   ├── SourceAndDestination.tsx    Wizard steps one and two
+│   │   │   ├── MappingAndReview.tsx        Wizard steps three and four
+│   │   │   ├── WizardActions.tsx
+│   │   │   ├── VerificationResults.tsx
+│   │   │   ├── RepairProposal.tsx
+│   │   │   └── EvidenceReport.tsx
+│   │   ├── ui/
+│   │   │   ├── Button.tsx
+│   │   │   ├── ConfirmDialog.tsx
+│   │   │   ├── EmptyState.tsx
+│   │   │   ├── Logo.tsx
+│   │   │   ├── Navigation.tsx              Breadcrumbs and safe back links
+│   │   │   ├── Spinner.tsx
+│   │   │   ├── StatusPill.tsx
+│   │   │   ├── Stepper.tsx
+│   │   │   └── ThemeToggle.tsx
+│   │   └── workspace/
+│   │       ├── Sidebar.tsx                 Desktop rail and mobile drawer
+│   │       ├── TopBar.tsx
+│   │       ├── PageHeading.tsx
+│   │       └── ConnectionBanner.tsx        Unreachable backend is not an empty state
 │   ├── domain/
-│   │   ├── types.ts                      The status vocabulary the UI renders
-│   │   └── status.ts                     Presentation classes and the state machine
-│   ├── data/api.ts                       The one adapter between API payloads and the UI
+│   │   ├── types.ts                        The status vocabulary the UI renders
+│   │   └── status.ts                       Presentation classes and the state machine
+│   ├── data/
+│   │   └── api.ts                          The one adapter between payloads and the UI
 │   └── lib/
-│       ├── api-client.ts                 Typed HTTP client with typed errors
-│       ├── api-types.ts                  Wire shapes mirroring the FastAPI contract
-│       ├── migration-store.tsx           One store, every value from the backend
-│       ├── theme.tsx                     Light, dark and system with persistence
-│       ├── routes.ts                     Every internal destination in one place
-│       └── site.ts                       Author details and external links
+│       ├── api-client.ts                   Typed HTTP client with typed errors
+│       ├── api-types.ts                    Wire shapes mirroring the FastAPI contract
+│       ├── migration-store.tsx             One store, every value from the backend
+│       ├── theme.tsx                       Light, dark and system with persistence
+│       ├── routes.ts                       Every internal destination in one place
+│       └── site.ts                         Author details and external links
 │
-├── backend/
+├── backend/                                FastAPI service
 │   ├── app/
-│   │   ├── api/main.py                   19 endpoints, deliberately thin
+│   │   ├── config.py                       Settings, safe defaults, no secret defaults
+│   │   ├── api/
+│   │   │   └── main.py                     18 endpoints plus 2 aliases, deliberately thin
 │   │   ├── services/
-│   │   │   ├── pipeline.py               Every workflow decision
-│   │   │   └── evidence.py               The canonical evidence object
-│   │   ├── domain/                       No web framework, no database driver
-│   │   │   ├── types.py                  Typed vocabulary, Decimal for money
-│   │   │   ├── contract.py               Mandatory checks and contract hashing
-│   │   │   ├── plan.py                   Allowlist validation, hardened approval
-│   │   │   ├── plans.py                  Safe and legacy proposal profiles
-│   │   │   ├── schema.py                 The destination schema
-│   │   │   └── verification.py           The independent verifier
-│   │   ├── ingest/parser.py              Safe CSV and XLSX reading
-│   │   ├── execute/executor.py           Runs only what the approved plan says
+│   │   │   ├── pipeline.py                 Every workflow decision lives here
+│   │   │   └── evidence.py                 The canonical evidence object
+│   │   ├── domain/                         No web framework, no database driver
+│   │   │   ├── types.py                    Typed vocabulary, Decimal for money
+│   │   │   ├── contract.py                 Mandatory checks and contract hashing
+│   │   │   ├── plan.py                     Allowlist validation, hardened approval
+│   │   │   ├── plans.py                    Safe and legacy proposal profiles
+│   │   │   ├── schema.py                   The destination schema
+│   │   │   └── verification.py             The independent verifier
+│   │   ├── ingest/
+│   │   │   └── parser.py                   Safe CSV and XLSX reading
+│   │   ├── execute/
+│   │   │   └── executor.py                 Runs only what the approved plan says
 │   │   ├── verify/
-│   │   │   ├── canonical.py              Reference canonicalisation and hashing
-│   │   │   ├── rust_bridge.py            Subprocess bridge, honest fallback
-│   │   │   └── db_verifier.py            Verification against rows read back
-│   │   ├── reports/{pdf,html}.py         Rendered from the canonical object
-│   │   ├── db/                           Connection, migrations, repository
-│   │   └── nebius/client.py              Token Factory, JSON only
-│   ├── sql/                              Numbered schema migrations
-│   ├── scripts/                          Fixture generator, Nebius smoke test, benchmark
-│   ├── tests/                            7 suites
-│   ├── Dockerfile                        Two stage, compiles and tests the Rust verifier
-│   ├── docker-compose.yml                Local PostgreSQL on 5433
-│   └── Makefile                          Every reproducible command
+│   │   │   ├── canonical.py                Reference canonicalisation and hashing
+│   │   │   ├── rust_bridge.py              Subprocess bridge with an honest fallback
+│   │   │   └── db_verifier.py              Verification against rows read back
+│   │   ├── reports/
+│   │   │   ├── html.py                     Standalone document, every value escaped
+│   │   │   └── pdf.py                      Server side reportlab rendering
+│   │   ├── db/
+│   │   │   ├── connection.py               psycopg 3, autocommit off
+│   │   │   ├── migrations.py               Numbered migration runner
+│   │   │   └── repository.py               Persistence, commit gate, reconciliation
+│   │   └── nebius/
+│   │       └── client.py                   Token Factory, JSON only, never executes
+│   ├── sql/
+│   │   ├── 001_schema.sql                  Control plane, staging, destination
+│   │   └── 002_batch3_integrity.sql        Source bytes, evidence, commit ledger
+│   ├── scripts/
+│   │   ├── generate_fixtures.py            Deterministic synthetic datasets
+│   │   ├── nebius_smoke_test.py            Standalone credential check
+│   │   └── benchmark_verifier.py           Python against Rust, measured not claimed
+│   ├── tests/
+│   │   ├── conftest.py                     Database isolation per test
+│   │   ├── test_pipeline.py                Parsing, plans, executor, repair
+│   │   ├── test_generated.py               The generator, checked independently
+│   │   ├── test_approval.py                Negative cases for the approval gate
+│   │   ├── test_canonical.py               Canonicalisation rules and Rust parity
+│   │   ├── test_reports.py                 Real PDF bytes, HTML escaping
+│   │   ├── test_database.py                Staging, idempotency, commit, rollback
+│   │   ├── test_api.py                     Every endpoint and the status taxonomy
+│   │   └── fixtures/
+│   │       ├── clean.csv                   The nine hand written hazard fixtures
+│   │       ├── ambiguous_date.csv
+│   │       ├── conflicting_key.csv
+│   │       ├── decimal_precision.csv
+│   │       ├── exact_duplicate.csv
+│   │       ├── invalid_date.csv
+│   │       ├── malformed.csv
+│   │       ├── missing_required.csv
+│   │       ├── numeric_overflow.csv
+│   │       ├── untrusted_cells.csv
+│   │       └── sample_evidence.py          Canonical object for the report tests
+│   ├── Dockerfile                          Two stage, compiles and tests the Rust crate
+│   ├── docker-compose.yml                  Local PostgreSQL on port 5433
+│   ├── Makefile                            Every reproducible command
+│   ├── pyproject.toml
+│   ├── pytest.ini                          The database and network markers
+│   ├── requirements.txt
+│   └── requirements-dev.txt
 │
-├── rust-verifier/                        Canonical hashing and reconciliation
-│   ├── src/lib.rs                        Rules, mirrored from canonical.py
-│   ├── src/main.rs                       JSON on stdin, JSON on stdout
-│   └── tests/integration.rs
+├── rust-verifier/                          Canonical hashing and reconciliation
+│   ├── src/
+│   │   ├── lib.rs                          Rules, mirrored from canonical.py
+│   │   └── main.rs                         JSON on stdin, JSON on stdout
+│   ├── tests/
+│   │   └── integration.rs
+│   ├── Cargo.toml
+│   ├── Cargo.lock                          Committed: the crate ships a binary
+│   └── README.md
 │
 ├── deploy/
-│   ├── DEPLOYMENT.md                     Vercel, Cloud Run, Cloud SQL, storage, costs
-│   ├── cloudrun.yaml                     Secrets referenced, never inlined
+│   ├── DEPLOYMENT.md                       Vercel, Cloud Run, Cloud SQL, costs
+│   ├── cloudrun.yaml                       Secrets referenced, never inlined
 │   └── storage-lifecycle.json
 │
-├── docs/ARCHITECTURE.md                  Why each boundary is where it is
-├── .github/workflows/ci.yml              Frontend, Rust, backend with PostgreSQL, hygiene
+├── docs/
+│   ├── ARCHITECTURE.md                     Why each boundary sits where it does
+│   └── DEMO.md                             Three minute demo storyboard
+│
+├── public/
+│   ├── logo.svg                            Horizontal lockup
+│   ├── logo-mark.svg                       Square mark
+│   ├── logo-light.svg                      For dark surfaces
+│   └── favicon.svg
+│
+├── .github/
+│   ├── workflows/
+│   │   └── ci.yml                          Frontend, Rust, backend, hygiene
+│   └── pull_request_template.md
+│
+├── .vscode/
+│   ├── extensions.json
+│   └── settings.json
+│
+├── .env.local.example                      Frontend variables, none of them secret
+├── .dockerignore
+├── .eslintrc.json
+├── .gitignore
+├── next.config.mjs
+├── next-env.d.ts
+├── package.json
+├── package-lock.json                       Pinned frontend dependency graph
+├── postcss.config.mjs
+├── tailwind.config.ts
+├── tsconfig.json
 ├── vercel.json
 ├── LICENSE
-└── README.md
+├── README.md
+└── SECURITY.md
 ```
 
 `backend/app/domain` imports no web framework and no database driver. That is what keeps the rules testable in a second and impossible for a route to quietly contradict.
@@ -518,6 +641,8 @@ moveproof/
 ---
 
 ## The API
+
+Eighteen primary endpoints, plus two compatibility aliases for the report routes.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -539,10 +664,25 @@ moveproof/
 | POST | `/api/migrations/{id}/runs/{run}/commit` | Commit, subject to every gate |
 | POST | `/api/migrations/{id}/rollback` | Remove this migration's committed rows |
 | GET | `/api/migrations/{id}/evidence` | The canonical evidence object as JSON |
-| GET | `/api/migrations/{id}/report.html` | The same object as a standalone document |
-| GET | `/api/migrations/{id}/report.pdf` | The same object as a PDF |
+| GET | `/api/migrations/{id}/report/html` | The same object as a standalone HTML document |
+| GET | `/api/migrations/{id}/report/pdf` | The same object as a PDF |
 
-Errors carry a `kind` so the interface can tell a blocked commit from a network failure: `workflow`, `commit_gate`, `parse`, `integrity`, `source`.
+The two aliases, `/api/migrations/{id}/report.html` and `/api/migrations/{id}/report.pdf`, were the canonical paths for one release and remain registered so existing links keep working. Both are covered by tests.
+
+### Status codes
+
+Four answers that must never be confused with one another.
+
+| Code | Meaning | `kind` |
+| --- | --- | --- |
+| 400 | The identifier is malformed. This says nothing about existence | none |
+| 404 | The record does not exist | `not_found` |
+| 409 | The record exists but the workflow is not in that state | `workflow`, `commit_gate`, `integrity` |
+| 422 | The request content could not be processed | `parse` |
+| 503 | The authoritative source is unreachable | `source` |
+| 500 | A bug in this application, never disguised as any of the above | none |
+
+Only `repository.NotFound` maps to 404. The builtin `LookupError` is deliberately not handled, because `KeyError` and `IndexError` inherit from it: a blanket handler once turned an internal serialisation fault into a missing record report, which made a real bug look like a dead route for an entire release. A regression test asserts that a `KeyError` propagates as a failure rather than a 404.
 
 A request is one transaction. The connection dependency commits only when the handler returns, so a failure part way through leaves nothing behind.
 
@@ -569,9 +709,9 @@ Only `NEXT_PUBLIC_` values reach the browser, and none of them is a secret.
 | `MAX_UPLOAD_BYTES` | Upload ceiling | 26214400, 25 MB |
 | `REQUEST_TIMEOUT_SECONDS` | Outbound timeout | 60 |
 | `MODEL_SAMPLE_ROWS` | Rows sent to the model, ever | 5 |
-| `CORS_ORIGINS` | Comma separated allowed origins | localhost:3000 |
+| `CORS_ORIGINS` | Comma-separated allowed origins | localhost:3000 |
 | `NEBIUS_API_KEY` | Token Factory credential | none, fails loudly |
-| `NEBIUS_BASE_URL` | Token Factory endpoint | `https://api.studio.nebius.com/v1` |
+| `NEBIUS_BASE_URL` | Token Factory endpoint | confirm against the current Token Factory console |
 | `NEBIUS_MODEL_ID` | Confirm with the smoke test, do not guess | none |
 | `MOVEPROOF_VERIFIER_BIN` | Override the Rust binary path | auto-detected |
 
@@ -617,7 +757,7 @@ The rules are strict about exactly the things that go wrong quietly:
 
 The check is advisory rather than mandatory in the contract, so an unbuilt binary cannot become the reason a correct migration is unable to commit. When it does run and fails, it fails loudly.
 
-No performance claim is made anywhere without a number from `make bench`. The Python side measured 84 ms for 5000 rows across 5 fields during development. The Rust figure has not been measured.
+No performance claim is made anywhere without a number from `make bench`.
 
 ---
 
@@ -625,7 +765,7 @@ No performance claim is made anywhere without a number from `make bench`. The Py
 
 HTML, JSON and PDF all render the output of `app/services/evidence.py` and nothing else. They are pure functions of one dictionary, which is what makes disagreement impossible rather than unlikely. `test_reports.py` asserts that rendering does not mutate the object.
 
-The evidence object carries the migration and run ids, the source checksum and size, the destination schema version, the approved plan version with its acknowledgements and contract hash, execution timestamps, applied operations, transformation errors, row accounting as arithmetic, every check with its evidence, discrepancies, human approvals, commit reconciliation, and an explicit limitations section.
+The evidence object carries the migration and run IDs, the source checksum and size, the destination schema version, the approved plan version with its acknowledgements and contract hash, execution timestamps, applied operations, transformation errors, row accounting as arithmetic, every check with its evidence, discrepancies, human approvals, commit reconciliation, and an explicit limitations section.
 
 The PDF is generated server side with reportlab: A4, repeated table headers so a long check list stays readable across pages, and a footer carrying the migration id, run id and page number so a printed sheet can be traced back. When reportlab is unavailable, `/health` says so and the interface disables the action rather than offering a button that fails.
 
@@ -645,22 +785,22 @@ The PDF is generated server side with reportlab: A4, repeated table headers so a
 | Secrets never in the browser | Implemented, no secret carries `NEXT_PUBLIC_` |
 | Only a schema summary and five rows sent to the model | Implemented, one code path |
 | HTML output escaped against untrusted cell text | Implemented and tested |
-| Transactional commit with a fail closed conflict policy | Implemented, not yet tested |
-| Idempotent retries | Implemented, not yet tested |
+| Transactional commit with a fail-closed conflict policy | Implemented and tested |
+| Idempotent retries | Implemented and tested |
 | Audit logging without field values | Implemented |
 | Private object storage with lifecycle deletion | Configured, not deployed |
 
-Marking a control as implemented but not tested is deliberate. A product about verifiable claims should not make unverifiable ones about itself.
+Distinguishing implemented from tested is deliberate. A product about verifiable claims should not make unverifiable ones about itself.
 
-Report a security issue by opening a GitHub issue. Do not include real data or credentials.
+Please follow the private reporting instructions in `SECURITY.md`. Do not include real data or credentials in public issues.
 
 ---
 
 ## Deployment
 
-Full instructions, including cost controls and a six point verification checklist, are in [`deploy/DEPLOYMENT.md`](deploy/DEPLOYMENT.md).
+Full instructions, including cost controls and a six-point verification checklist, are in [deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md).
 
-In short: frontend on Vercel, backend on Cloud Run from a two stage image that compiles and tests the Rust verifier, PostgreSQL on Cloud SQL, files in a private Cloud Storage bucket with 90 day lifecycle deletion, inference on Nebius.
+Target production architecture: frontend on Vercel, backend on Cloud Run from a two-stage image that compiles and tests the Rust verifier, PostgreSQL on Cloud SQL, files in a private Cloud Storage bucket with 90-day lifecycle deletion, and inference on Nebius.
 
 Two notes worth repeating. A Google Cloud budget alert is a notification, not a spending cap; the controls that actually bound spend are `maxScale` on Cloud Run and stopping the SQL instance between demonstrations. And no GPU is provisioned anywhere, because Token Factory serves the model.
 
@@ -687,7 +827,9 @@ Four rules hold across every screen. Status is never carried by colour alone: ea
 
 ### Command palette
 
-`⌘ K` on macOS, `Ctrl K` elsewhere, `/` when not typing, or the visible search button, which is the accessible route on a phone. Arrow keys move, Enter activates, Escape closes, and focus returns to whatever opened it.
+`⌘ K` on macOS, `Ctrl K` elsewhere, or the visible search button, which is the accessible route on a phone. Arrow keys move, Enter activates, Escape closes, and focus returns to whatever opened it.
+
+One implementation, mounted once at the application root and rendered through a portal, so the shortcut works on every route and no ancestor stacking context can hide it. The workspace trigger opens that same instance rather than a second copy.
 
 It navigates and it changes the theme. It cannot approve a plan, run a verification or commit a migration: those decisions belong to screens that show the evidence behind them. Migration search queries the backend. Commands appear only when they are actually available, so there is no entry for resuming a draft that does not exist.
 
@@ -699,24 +841,23 @@ It navigates and it changes the theme. It cannot approve a plan, run a verificat
 
 - [x] Deterministic core: parsing, plan versioning, allowlist, executor, verifier
 - [x] Hardened approval bound to a contract hash, with recorded acknowledgements
-- [x] PostgreSQL staging, idempotent runs, fail closed commit gate, rollback
+- [x] PostgreSQL staging, idempotent runs, fail-closed commit gate, rollback
 - [x] Original source bytes preserved with integrity checks
-- [x] FastAPI with 19 endpoints and a canonical evidence object
-- [x] Frontend fully wired to the backend, with no hardcoded results anywhere
+- [x] FastAPI with 18 primary endpoints, 2 compatibility aliases, and a canonical evidence object
+- [x] Workspace fully wired to the backend; the public landing page uses a clearly labeled synthetic preview
 - [x] Rust verifier with a real pipeline role and parity tests
 - [x] HTML, JSON and PDF reports from one object
 - [x] Command palette, dark mode, responsive workspace
 - [x] Synthetic generator with twelve hazard kinds and a test-only manifest
 - [x] Deployment configuration and CI across all three languages
+- [x] Database and API suites passing against real PostgreSQL, locally and in CI
 
 ### Before submission
 
-- [ ] Run the database and API suites and fix what they surface
-- [ ] Build the Rust verifier and run the parity tests
-- [ ] A real Token Factory call, with the model id recorded
-- [ ] Deploy and verify against the six point checklist
-- [ ] Replace the placeholder links in `src/lib/site.ts`
-- [ ] Record the demo video
+- [ ] Complete a real Nebius Token Factory call and record the model ID
+- [ ] Deploy the production stack and run the deployment checklist
+- [ ] Replace remaining placeholder links in `src/lib/site.ts`
+- [ ] Record and publish the demo video
 
 ### Considered and deliberately deferred
 
