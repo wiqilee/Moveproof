@@ -152,6 +152,11 @@ def health() -> dict[str, Any]:
                 "mean a call has succeeded."
             ),
         },
+        "exports": {
+            # The button is shown when the backend says the route exists, not
+            # because the frontend assumes it does.
+            "verified_csv_available": True,
+        },
         "reports": {
             # The frontend disables the PDF action when this is false rather
             # than offering a button that leads to an error.
@@ -278,7 +283,17 @@ def preview(
 
 @app.get("/api/migrations/{migration_id}/events")
 def events(migration_id: str, conn=Depends(db)) -> dict[str, Any]:
-    rows = repository.list_events(conn, _uuid(migration_id, "migration_id"))
+    """The audit events for one migration.
+
+    Existence is established first. Without it, a migration that was never
+    created and one that simply has no events both answer 200 with an empty
+    list, which reads as "nothing happened" rather than "no such record". A
+    deleted migration would keep answering 200 forever, for the same reason.
+    """
+    mid = _uuid(migration_id, "migration_id")
+    repository.load_migration(conn, mid)
+
+    rows = repository.list_events(conn, mid)
     return {
         "events": [
             {
@@ -294,15 +309,20 @@ def events(migration_id: str, conn=Depends(db)) -> dict[str, Any]:
 
 @app.delete("/api/migrations/{migration_id}", status_code=204)
 def delete_migration(migration_id: str, conn=Depends(db)) -> Response:
-    """Delete a migration and everything derived from it.
+    """Delete a migration and its derived data.
 
-    Cascades remove source rows, plans, runs, staged rows, checks and events.
-    Committed destination rows are removed first so nothing is orphaned.
+    Cascades take the source file, source rows, plans, runs, staged rows,
+    checks, transformation errors, approvals, commits and events.
+
+    The destination is untouched. A committed migration must be rolled back
+    first, through its own endpoint, so removing customer records is always an
+    act somebody asked for by name rather than a side effect of tidying up.
+
+        204  the record existed, was not committed, and is now gone
+        404  the record never existed
+        409  the record is committed; roll it back first
     """
-    mid = _uuid(migration_id, "migration_id")
-    repository.rollback_migration(conn, mid)
-    with conn.cursor() as cur:
-        cur.execute("DELETE FROM moveproof.migrations WHERE id = %s", (mid,))
+    pipeline.delete_migration(conn, _uuid(migration_id, "migration_id"))
     return Response(status_code=204)
 
 
@@ -462,6 +482,39 @@ def report_pdf(
         media_type="application/pdf",
         headers={
             "Content-Disposition": f'attachment; filename="moveproof-evidence-{short}.pdf"'
+        },
+    )
+
+
+@app.get("/api/migrations/{migration_id}/export/csv")
+def export_verified_csv(migration_id: str, conn=Depends(db)) -> Response:
+    """The verified transformed dataset as CSV.
+
+    Distinct from the evidence reports. Those describe what happened; this is
+    the data itself, exactly as it passed verification.
+
+    Available once a run is verified with nothing mandatory outstanding, and
+    still available after commit. A failed or unverified run is refused with a
+    workflow error rather than exported under a name that says verified.
+    """
+    csv_text, filename, manifest = pipeline.export_verified_csv(
+        conn, _uuid(migration_id, "migration_id")
+    )
+    return Response(
+        content=csv_text,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            # The caller can tell which run the file describes without opening
+            # it, which matters when a migration has been rerun after a repair.
+            "X-MoveProof-Run-Id": manifest["run_id"],
+            "X-MoveProof-Plan-Version": str(manifest["plan_version"]),
+            "X-MoveProof-Row-Count": str(manifest["row_count"]),
+            "X-MoveProof-Committed": "true" if manifest["committed"] else "false",
+            "Access-Control-Expose-Headers": (
+                "Content-Disposition, X-MoveProof-Run-Id, X-MoveProof-Plan-Version, "
+                "X-MoveProof-Row-Count, X-MoveProof-Committed"
+            ),
         },
     )
 

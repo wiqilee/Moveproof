@@ -35,6 +35,7 @@ from app.domain.types import (
 )
 from app.execute.executor import execute_plan
 from app.ingest.parser import ParseError, parse_upload
+from app.reports.csv_export import build_csv, export_filename
 from app.services.evidence import build_evidence
 from app.verify.db_verifier import verify_run
 
@@ -685,10 +686,135 @@ def commit(
     return {"migration_id": str(migration_id), "run_id": str(run_id), **outcome}
 
 
+def delete_migration(
+    conn: psycopg.Connection, migration_id: uuid.UUID
+) -> dict[str, Any]:
+    """Delete a migration and its derived data.
+
+    Refused while the migration is still committed. Removing rows from the
+    destination is an accountable act with its own endpoint, its own audit
+    event and its own confirmation in the interface. Folding it into deletion
+    would mean customer records disappear as a side effect of discarding a
+    workspace entry, which is the opposite of what this product is for.
+
+    The caller rolls back first, and only then deletes:
+
+        POST /api/migrations/{id}/rollback   removes the destination rows
+        DELETE /api/migrations/{id}          removes the record
+
+    Absence is 404. A committed migration is 409, because the record exists
+    and the workflow is simply not in a state where deletion is allowed yet.
+    """
+    migration = repository.load_migration(conn, migration_id)
+    state = MigrationState(migration["state"])
+    remaining = repository.count_committed_rows(conn, migration_id)
+
+    if state is MigrationState.COMMITTED or remaining:
+        raise PipelineError(
+            f"This migration is committed and holds {remaining} destination "
+            "row(s). Roll it back first, then delete. Deletion does not remove "
+            "committed data as a side effect."
+        )
+
+    repository.purge_migration(conn, migration_id)
+    return {"migration_id": str(migration_id), "deleted": True}
+
+
 def rollback(conn: psycopg.Connection, migration_id: uuid.UUID) -> dict[str, Any]:
-    repository.load_migration(conn, migration_id)
     removed = repository.rollback_migration(conn, migration_id)
     return {"migration_id": str(migration_id), "rows_removed": removed}
+
+
+# ------------------------------------------------------------ verified export
+
+
+def _run_is_verified(conn: psycopg.Connection, run_id: uuid.UUID) -> bool:
+    """True when this run was verified and nothing mandatory is outstanding.
+
+    The same rule the commit gate applies, read from the same stored rows. A
+    run whose checks were never recorded is not verified, and a mandatory check
+    that never ran counts against it exactly as a failure would.
+    """
+    run = repository.load_run(conn, run_id)
+    if run["verified_at"] is None:
+        return False
+
+    stored = repository.load_checks(conn, run_id)
+    if not stored:
+        return False
+
+    executed = {check["check_id"] for check in stored}
+    if CONTRACT.missing_checks(executed):
+        return False
+
+    return not any(
+        CONTRACT.is_mandatory(check["check_id"])
+        and check["status"] in ("failed", "review")
+        for check in stored
+    )
+
+
+def exportable_run_id(
+    conn: psycopg.Connection, migration_id: uuid.UUID
+) -> uuid.UUID | None:
+    """The run whose transformed rows may be exported as verified.
+
+    The committed run wins when there is one: those rows are what actually
+    reached the destination, and exporting anything else would describe a
+    dataset nobody committed.
+
+    Otherwise the most recent run that passed verification is used, which is
+    what `ready_to_commit` means. A failed or unverified run is never eligible,
+    so a file labelled verified cannot contain unverified data.
+    """
+    committed = repository.committed_run_id(conn, migration_id)
+    if committed is not None:
+        return committed
+
+    for run_id in repository.list_run_ids(conn, migration_id):
+        if _run_is_verified(conn, run_id):
+            return run_id
+    return None
+
+
+def export_verified_csv(
+    conn: psycopg.Connection, migration_id: uuid.UUID
+) -> tuple[str, str, dict[str, Any]]:
+    """Render the verified transformed rows as CSV.
+
+    Returns the CSV text, a filename, and a small manifest the API turns into
+    response headers so a caller can tell which run the file describes.
+
+    Rows come from staging, which is what the verifier actually checked. They
+    are not recomputed here: a second transformation on the way out would be a
+    second chance to damage a value, and nothing would be verifying it.
+    """
+    migration = repository.load_migration(conn, migration_id)
+
+    run_id = exportable_run_id(conn, migration_id)
+    if run_id is None:
+        raise PipelineError(
+            "No verified run is available to export. A dataset can only be "
+            "exported once a run has passed verification with nothing mandatory "
+            "outstanding."
+        )
+
+    rows = repository.load_staged_rows(conn, run_id, committable_only=True)
+    csv_text = build_csv((row["values"] for row in rows), SCHEMA)
+
+    run = repository.load_run(conn, run_id)
+    commit_record = repository.load_commit(conn, run_id)
+
+    manifest = {
+        "migration_id": str(migration_id),
+        "run_id": str(run_id),
+        "plan_version": run["plan_version"],
+        "row_count": len(rows),
+        "committed": commit_record is not None,
+        "schema_version": SCHEMA.version,
+    }
+    filename = export_filename(str(migration_id), migration["filename"])
+    return csv_text, filename, manifest
 
 
 # ------------------------------------------------------------------ evidence

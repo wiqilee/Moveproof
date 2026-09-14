@@ -138,3 +138,138 @@ def test_html_escapes_untrusted_cell_text():
     html = build_html(evidence)
     assert "<script>alert(1)</script>" not in html
     assert "&lt;script&gt;" in html
+
+
+# =====================================================================
+# Verified CSV export
+#
+# The evidence reports describe what happened. This is the data itself, so
+# the tests here are about values surviving the trip rather than about
+# rendering.
+# =====================================================================
+
+from decimal import Decimal  # noqa: E402
+from datetime import date  # noqa: E402
+
+from app.domain.schema import CUSTOMERS_V1  # noqa: E402
+from app.reports.csv_export import build_csv, export_filename, render_value  # noqa: E402
+
+
+def row(**overrides):
+    base = {
+        "customer_id": "00127",
+        "full_name": "Amara Chen",
+        "email": "amara.chen@example.com",
+        "signup_date": date(2024, 3, 16),
+        "balance": Decimal("1200.50"),
+        "region": "APAC",
+    }
+    base.update(overrides)
+    return base
+
+
+def parse(csv_text):
+    import csv as _csv
+    import io
+
+    return list(_csv.reader(io.StringIO(csv_text)))
+
+
+def test_header_matches_the_destination_schema():
+    parsed = parse(build_csv([], CUSTOMERS_V1))
+    assert parsed[0] == [column.name for column in CUSTOMERS_V1.columns]
+
+
+def test_no_internal_columns_leak_into_the_export():
+    parsed = parse(build_csv([row()], CUSTOMERS_V1))
+    for internal in ("run_id", "row_number", "disposition", "source_key", "migration_id"):
+        assert internal not in parsed[0]
+
+
+def test_a_leading_zero_identifier_survives_the_export():
+    """The whole reason this product exists."""
+    parsed = parse(build_csv([row()], CUSTOMERS_V1))
+    assert parsed[1][0] == "00127"
+    assert parsed[1][0] != "127"
+
+
+def test_decimal_scale_is_preserved_exactly():
+    parsed = parse(build_csv([row(balance=Decimal("1200.50"))], CUSTOMERS_V1))
+    assert parsed[1][4] == "1200.50"
+
+
+def test_a_small_decimal_is_not_written_in_exponent_notation():
+    parsed = parse(build_csv([row(balance=Decimal("0.0000001"))], CUSTOMERS_V1))
+    assert "E" not in parsed[1][4] and "e" not in parsed[1][4]
+
+
+def test_a_float_is_refused_rather_than_rounded():
+    with pytest.raises(TypeError):
+        render_value(1200.5)
+
+
+def test_dates_render_as_iso():
+    parsed = parse(build_csv([row()], CUSTOMERS_V1))
+    assert parsed[1][3] == "2024-03-16"
+
+
+def test_null_becomes_an_empty_field_not_the_word_none():
+    parsed = parse(build_csv([row(region=None)], CUSTOMERS_V1))
+    assert parsed[1][5] == ""
+
+
+def test_a_comma_in_a_value_is_quoted_and_round_trips():
+    parsed = parse(build_csv([row(full_name="Chen, Amara")], CUSTOMERS_V1))
+    assert parsed[1][1] == "Chen, Amara"
+
+
+def test_a_quote_in_a_value_round_trips():
+    parsed = parse(build_csv([row(full_name='Amara "Ami" Chen')], CUSTOMERS_V1))
+    assert parsed[1][1] == 'Amara "Ami" Chen'
+
+
+def test_a_newline_in_a_value_round_trips():
+    parsed = parse(build_csv([row(full_name="Amara\nChen")], CUSTOMERS_V1))
+    assert parsed[1][1] == "Amara\nChen"
+
+
+def test_a_formula_like_value_is_neutralised_on_the_way_out():
+    """Stored verbatim, escaped only here.
+
+    The verifier compares against what the source actually contained, so the
+    stored value keeps the formula. The exported file must not execute it when
+    a spreadsheet opens the CSV.
+    """
+    parsed = parse(build_csv([row(full_name="=SUM(A1:A9)")], CUSTOMERS_V1))
+    assert parsed[1][1].startswith("'")
+    assert "=SUM(A1:A9)" in parsed[1][1]
+
+
+def test_row_count_matches_the_rows_supplied():
+    rows = [row(customer_id=f"{n:05d}") for n in range(1, 8)]
+    parsed = parse(build_csv(rows, CUSTOMERS_V1))
+    assert len(parsed) == len(rows) + 1
+
+
+def test_column_order_follows_the_schema_for_every_row():
+    parsed = parse(build_csv([row(), row(customer_id="00128")], CUSTOMERS_V1))
+    assert parsed[1][0] == "00127"
+    assert parsed[2][0] == "00128"
+    assert len(parsed[1]) == len(parsed[0])
+
+
+def test_line_endings_do_not_depend_on_the_host_platform():
+    text = build_csv([row()], CUSTOMERS_V1)
+    assert "\r\n" not in text
+    assert text.endswith("\n")
+
+
+def test_the_filename_identifies_the_migration():
+    name = export_filename("3f2a9c14-7b6e-4d58-9a01-6c2e4b8d5f70", "customers_export.csv")
+    assert name == "moveproof-3f2a9c14-customers_export-verified.csv"
+    assert name.endswith(".csv")
+
+
+def test_the_filename_is_safe_when_the_upload_name_is_not():
+    name = export_filename("3f2a9c14-7b6e-4d58-9a01-6c2e4b8d5f70", "../../etc/passwd.csv")
+    assert "/" not in name and ".." not in name

@@ -1,0 +1,12 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - backend/Dockerfile
+      - -t
+      - asia-southeast2-docker.pkg.dev/$PROJECT_ID/moveproof/backend:latest
+      - .
+
+images:
+  - asia-southeast2-docker.pkg.dev/$PROJECT_ID/moveproof/backend:latest

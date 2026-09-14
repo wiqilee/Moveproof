@@ -9,10 +9,10 @@
 # means the deployment is checking less than it could.
 
 # ---------------------------------------------------------------- rust stage
-FROM rust:1.82-slim AS rust-build
+FROM rust:1.85-slim AS rust-build
 
 WORKDIR /build
-COPY rust-verifier/Cargo.toml ./Cargo.toml
+COPY rust-verifier/Cargo.toml rust-verifier/Cargo.lock ./
 COPY rust-verifier/src ./src
 COPY rust-verifier/tests ./tests
 

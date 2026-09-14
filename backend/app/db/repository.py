@@ -644,6 +644,39 @@ def latest_run_id(conn: psycopg.Connection, migration_id: uuid.UUID) -> uuid.UUI
     return record["id"] if record else None
 
 
+def list_run_ids(conn: psycopg.Connection, migration_id: uuid.UUID) -> list[uuid.UUID]:
+    """Every run for a migration, newest first."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id FROM moveproof.runs WHERE migration_id = %s
+            ORDER BY started_at DESC
+            """,
+            (migration_id,),
+        )
+        return [record["id"] for record in cur.fetchall()]
+
+
+def committed_run_id(
+    conn: psycopg.Connection, migration_id: uuid.UUID
+) -> uuid.UUID | None:
+    """The run whose rows were written to the destination, if any.
+
+    `moveproof.commits` has a unique constraint on run_id, so a migration has
+    at most one committed run.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT run_id FROM moveproof.commits WHERE migration_id = %s
+            ORDER BY committed_at DESC LIMIT 1
+            """,
+            (migration_id,),
+        )
+        record = cur.fetchone()
+    return record["run_id"] if record else None
+
+
 def load_commit(conn: psycopg.Connection, run_id: uuid.UUID) -> dict[str, Any] | None:
     with conn.cursor() as cur:
         cur.execute("SELECT * FROM moveproof.commits WHERE run_id = %s", (run_id,))
@@ -1029,19 +1062,73 @@ def mark_verified(conn: psycopg.Connection, run_id: uuid.UUID) -> None:
         )
 
 
-def rollback_migration(
-    conn: psycopg.Connection, migration_id: uuid.UUID
-) -> int:
-    """Remove committed rows for one migration.
+def remove_committed_rows(conn: psycopg.Connection, migration_id: uuid.UUID) -> int:
+    """Delete the destination rows this migration wrote, and nothing else.
 
-    Rollback is scoped to rows this migration wrote, inside this PostgreSQL
-    instance. It is not a general undo, and the evidence report says so.
+    Split out from rollback_migration because deletion needs the same removal
+    without the audit trail that follows it. Writing an event about a record
+    that is about to be cascade-deleted is work with no reader.
     """
     with conn.cursor() as cur:
         cur.execute(
             "DELETE FROM public.customers WHERE migration_id = %s", (migration_id,)
         )
-        removed = cur.rowcount or 0
+        return cur.rowcount or 0
+
+
+def rollback_migration(
+    conn: psycopg.Connection, migration_id: uuid.UUID
+) -> int:
+    """Remove committed rows for one migration and record that it happened.
+
+    Rollback is scoped to rows this migration wrote, inside this PostgreSQL
+    instance. It is not a general undo, and the evidence report says so.
+
+    Existence is established first. `moveproof.events` carries a foreign key to
+    `moveproof.migrations`, so logging against an id that was never created
+    raises a ForeignKeyViolation from the driver: a clear 404 turns into an
+    unhandled database error.
+    """
+    load_migration(conn, migration_id)
+
+    removed = remove_committed_rows(conn, migration_id)
     set_state(conn, migration_id, MigrationState.ROLLED_BACK)
     log_event(conn, migration_id, None, "warn", f"Rolled back {removed} row(s)")
     return removed
+
+
+def count_committed_rows(conn: psycopg.Connection, migration_id: uuid.UUID) -> int:
+    """How many destination rows this migration still holds."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) AS n FROM public.customers WHERE migration_id = %s",
+            (migration_id,),
+        )
+        return cur.fetchone()["n"]
+
+
+def purge_migration(conn: psycopg.Connection, migration_id: uuid.UUID) -> None:
+    """Delete a migration and its derived control plane data.
+
+    Deliberately does not touch the destination. Removing committed rows is a
+    separate, explicitly requested act, and letting deletion do it as a side
+    effect would make destination data disappear through a button labelled
+    something else.
+
+    The assertion below is defence in depth: if a caller ever reaches here with
+    rows still committed, the delete is refused rather than orphaning them.
+
+    No event is written. The audit trail is part of what is being destroyed,
+    and a row inserted microseconds before its own cascade has no reader.
+    """
+    load_migration(conn, migration_id)
+
+    remaining = count_committed_rows(conn, migration_id)
+    if remaining:
+        raise CommitRefused(
+            f"This migration still holds {remaining} committed destination row(s). "
+            "Roll it back before deleting."
+        )
+
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM moveproof.migrations WHERE id = %s", (migration_id,))

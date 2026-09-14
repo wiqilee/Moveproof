@@ -36,6 +36,17 @@ CLEAN = b"""customer_id,full_name,email,signup_date,balance,region
 00129,Priya Natarajan,priya.n@example.com,2024-03-14,540.75,APAC
 """
 
+# A second dataset that shares no customer_id and no email with CLEAN, so both
+# can sit in the destination at once without the fail-closed conflict policy
+# refusing either. Isolation cannot be proved with two files that collide.
+CLEAN_B = b"""customer_id,full_name,email,signup_date,balance,region
+00701,Mei Watanabe,mei.watanabe@example.com,2024-04-02,310.25,APAC
+00702,Idris Okafor,idris.okafor@example.com,2024-04-03,875.00,EMEA
+"""
+
+CLEAN_ROWS = 3
+CLEAN_B_ROWS = 2
+
 
 @pytest.fixture
 def client():
@@ -519,6 +530,7 @@ ABSENT = "00000000-0000-0000-0000-000000000000"
         "/report.html",
         "/evidence",
         "/preview",
+        "/events",
     ],
 )
 def test_absent_migration_is_404_on_every_read_route(client, path):
@@ -642,3 +654,413 @@ def test_every_html_route_variant_returns_html(client, suffix):
     assert response.status_code == 200, response.text
     assert response.headers["content-type"].startswith("text/html")
     assert response.text.startswith("<!doctype html>")
+
+
+# =====================================================================
+# Verified CSV export
+#
+# The dataset, not the evidence. The rule under test throughout is that a
+# file labelled verified may only ever contain data that actually passed
+# verification.
+# =====================================================================
+
+
+def approve_and_run(client, migration_id, profile="safe", acks=None):
+    client.post(
+        f"/api/migrations/{migration_id}/plan/approve",
+        json={"profile": profile, "acknowledgements": acks or []},
+    )
+    run_id = client.post(f"/api/migrations/{migration_id}/run").json()["run_id"]
+    verification = client.post(
+        f"/api/migrations/{migration_id}/runs/{run_id}/verify"
+    ).json()
+    return run_id, verification
+
+
+def read_csv(response):
+    import csv as _csv
+    import io
+
+    return list(_csv.reader(io.StringIO(response.text)))
+
+
+def test_export_is_refused_before_any_run(client):
+    migration_id = upload(client)
+    response = client.get(f"/api/migrations/{migration_id}/export/csv")
+    assert response.status_code == 409
+    assert response.json()["kind"] == "workflow"
+    assert "No verified run" in response.json()["detail"]
+
+
+def test_export_is_refused_when_verification_failed(client):
+    """A failed run must never be downloadable as a verified dataset."""
+    migration_id = upload(client)
+    _, verification = approve_and_run(
+        client, migration_id, profile="legacy", acks=["customer_id"]
+    )
+    assert verification["summary"]["failed"] > 0
+
+    response = client.get(f"/api/migrations/{migration_id}/export/csv")
+    assert response.status_code == 409
+    assert response.json()["kind"] == "workflow"
+
+
+def test_export_is_refused_when_a_run_was_staged_but_never_verified(client):
+    migration_id = upload(client)
+    client.post(
+        f"/api/migrations/{migration_id}/plan/approve",
+        json={"profile": "safe", "acknowledgements": []},
+    )
+    client.post(f"/api/migrations/{migration_id}/run")
+    # Deliberately no verify call.
+
+    response = client.get(f"/api/migrations/{migration_id}/export/csv")
+    assert response.status_code == 409
+
+
+def test_export_works_before_commit_when_ready_to_commit(client):
+    migration_id = upload(client)
+    _, verification = approve_and_run(client, migration_id)
+    assert verification["state"] == "ready_to_commit"
+
+    response = client.get(f"/api/migrations/{migration_id}/export/csv")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+    assert response.headers["x-moveproof-committed"] == "false"
+
+
+def test_export_still_works_after_commit(client):
+    migration_id = upload(client)
+    run_id, _ = approve_and_run(client, migration_id)
+    committed = client.post(
+        f"/api/migrations/{migration_id}/runs/{run_id}/commit", json={}
+    ).json()
+
+    response = client.get(f"/api/migrations/{migration_id}/export/csv")
+    assert response.status_code == 200
+    assert response.headers["x-moveproof-committed"] == "true"
+    assert int(response.headers["x-moveproof-row-count"]) == committed["written"]
+
+
+def test_exported_identifiers_keep_their_leading_zeros(client):
+    migration_id = upload(client)
+    approve_and_run(client, migration_id)
+
+    rows = read_csv(client.get(f"/api/migrations/{migration_id}/export/csv"))
+    identifiers = [r[0] for r in rows[1:]]
+    assert "00127" in identifiers
+    assert "127" not in identifiers
+
+
+def test_exported_headers_come_from_the_destination_schema(client):
+    migration_id = upload(client)
+    approve_and_run(client, migration_id)
+
+    schema = client.get("/api/schema/destination").json()
+    rows = read_csv(client.get(f"/api/migrations/{migration_id}/export/csv"))
+    assert rows[0] == [column["name"] for column in schema["columns"]]
+
+
+def test_exported_row_count_matches_the_committable_rows(client):
+    migration_id = upload(client)
+    run_id, _ = approve_and_run(client, migration_id)
+
+    evidence = client.get(
+        f"/api/migrations/{migration_id}/evidence?run_id={run_id}"
+    ).json()
+    rows = read_csv(client.get(f"/api/migrations/{migration_id}/export/csv"))
+
+    assert len(rows) - 1 == evidence["row_accounting"]["committable_rows"]
+
+
+def test_export_after_a_repair_describes_the_repaired_run(client):
+    """The damaged run must not be the one exported."""
+    migration_id = upload(client)
+    broken_run, verification = approve_and_run(
+        client, migration_id, profile="legacy", acks=["customer_id"]
+    )
+    assert verification["summary"]["failed"] > 0
+
+    repaired_run, repaired = approve_and_run(client, migration_id)
+    assert repaired["summary"]["failed"] == 0
+    assert repaired_run != broken_run
+
+    response = client.get(f"/api/migrations/{migration_id}/export/csv")
+    assert response.status_code == 200
+    assert response.headers["x-moveproof-run-id"] == repaired_run
+
+    identifiers = [r[0] for r in read_csv(response)[1:]]
+    assert "00127" in identifiers
+
+
+def test_export_for_an_absent_migration_is_404(client):
+    response = client.get(f"/api/migrations/{ABSENT}/export/csv")
+    assert response.status_code == 404
+    assert response.json()["kind"] == "not_found"
+
+
+def test_health_advertises_the_export_capability(client):
+    body = client.get("/health").json()
+    assert body["exports"]["verified_csv_available"] is True
+
+
+# =====================================================================
+# Delete and rollback, the backend contract the UI depends on
+# =====================================================================
+
+
+def test_deleting_an_uncommitted_migration_removes_it(client):
+    migration_id = upload(client)
+    approve_and_run(client, migration_id)
+
+    assert client.delete(f"/api/migrations/{migration_id}").status_code == 204
+    assert client.get(f"/api/migrations/{migration_id}").status_code == 404
+
+
+def test_rollback_then_delete_removes_committed_destination_rows(client):
+    """The sequence the committed flow in the UI performs."""
+    migration_id = upload(client)
+    run_id, _ = approve_and_run(client, migration_id)
+    committed = client.post(
+        f"/api/migrations/{migration_id}/runs/{run_id}/commit", json={}
+    ).json()
+    assert committed["written"] == CLEAN_ROWS
+
+    rolled = client.post(f"/api/migrations/{migration_id}/rollback").json()
+    assert rolled["rows_removed"] == committed["written"]
+
+    assert client.delete(f"/api/migrations/{migration_id}").status_code == 204
+    assert client.get(f"/api/migrations/{migration_id}").status_code == 404
+
+    # The identifiers are free again, so a later migration is not blocked by
+    # rows nobody kept.
+    again = upload(client)
+    later_run, _ = approve_and_run(client, again)
+    assert (
+        client.post(
+            f"/api/migrations/{again}/runs/{later_run}/commit", json={}
+        ).status_code
+        == 200
+    )
+
+
+def test_rollback_on_an_absent_migration_is_404(client):
+    assert client.post(f"/api/migrations/{ABSENT}/rollback").status_code == 404
+
+
+def test_export_is_refused_after_the_migration_is_deleted(client):
+    migration_id = upload(client)
+    approve_and_run(client, migration_id)
+    client.delete(f"/api/migrations/{migration_id}")
+
+    response = client.get(f"/api/migrations/{migration_id}/export/csv")
+    assert response.status_code == 404
+
+
+# =====================================================================
+# Delete and rollback
+#
+# Removing rows from the destination is an accountable act with its own
+# endpoint. Deletion never does it as a side effect.
+# =====================================================================
+
+
+def test_delete_succeeds_before_any_run(client):
+    """A migration abandoned straight after upload is removable."""
+    migration_id = upload(client)
+
+    response = client.delete(f"/api/migrations/{migration_id}")
+    assert response.status_code == 204, response.text
+    assert response.content == b""
+    assert client.get(f"/api/migrations/{migration_id}").status_code == 404
+
+
+def test_delete_succeeds_after_verification_without_commit(client):
+    """Staged and verified is still uncommitted, so nothing is at stake."""
+    migration_id = upload(client)
+    approve_and_run(client, migration_id)
+
+    assert client.delete(f"/api/migrations/{migration_id}").status_code == 204
+    assert client.get(f"/api/migrations/{migration_id}/evidence").status_code == 404
+
+
+def test_delete_is_refused_while_the_migration_is_committed(client):
+    """The invariant this whole flow exists to protect.
+
+    Deleting must not remove customer records as a side effect of discarding a
+    workspace entry. The refusal is a workflow conflict, and the destination is
+    left exactly as it was.
+    """
+    migration_id = upload(client)
+    run_id, _ = approve_and_run(client, migration_id)
+    committed = client.post(
+        f"/api/migrations/{migration_id}/runs/{run_id}/commit", json={}
+    ).json()
+    assert committed["written"] > 0
+
+    response = client.delete(f"/api/migrations/{migration_id}")
+    assert response.status_code == 409, response.text
+    assert response.json()["kind"] == "workflow"
+    assert "roll it back first" in response.json()["detail"].lower()
+
+    # The record and its rows both survive the refusal.
+    assert client.get(f"/api/migrations/{migration_id}").status_code == 200
+    evidence = client.get(f"/api/migrations/{migration_id}/evidence").json()
+    assert evidence["commit"]["written_rows"] == committed["written"]
+
+
+def test_rollback_then_delete_is_the_supported_sequence(client):
+    """Rollback removes the rows and records it. Delete then removes the record."""
+    migration_id = upload(client)
+    run_id, _ = approve_and_run(client, migration_id)
+    committed = client.post(
+        f"/api/migrations/{migration_id}/runs/{run_id}/commit", json={}
+    ).json()
+
+    rolled = client.post(f"/api/migrations/{migration_id}/rollback")
+    assert rolled.status_code == 200, rolled.text
+    assert rolled.json()["rows_removed"] == committed["written"]
+
+    # The rollback is recorded before the record is destroyed.
+    events = client.get(f"/api/migrations/{migration_id}/events").json()["events"]
+    assert any("Rolled back" in event["message"] for event in events)
+
+    assert client.delete(f"/api/migrations/{migration_id}").status_code == 204
+    assert client.get(f"/api/migrations/{migration_id}").status_code == 404
+
+    # The identifiers are free again, so a later migration is not blocked.
+    again = upload(client)
+    later_run, _ = approve_and_run(client, again)
+    assert (
+        client.post(f"/api/migrations/{again}/runs/{later_run}/commit", json={}).status_code
+        == 200
+    )
+
+
+def test_delete_is_404_for_an_unknown_migration(client):
+    """Absence is not a conflict. Nothing conflicts with a record never created."""
+    response = client.delete(f"/api/migrations/{ABSENT}")
+    assert response.status_code == 404, response.text
+    assert response.json()["kind"] == "not_found"
+
+
+def test_rollback_is_404_for_an_unknown_migration(client):
+    response = client.post(f"/api/migrations/{ABSENT}/rollback")
+    assert response.status_code == 404, response.text
+    assert response.json()["kind"] == "not_found"
+
+
+def test_rollback_removes_only_this_migrations_destination_rows(client):
+    """Two migrations committed at once. Rolling one back leaves the other whole.
+
+    The two datasets share no identifier and no email, so both commit under the
+    fail-closed conflict policy rather than one having to be cleared first.
+
+    The proof that B's rows survive is deliberately indirect and stronger than
+    reading a stored number back: a third migration carrying B's identifiers is
+    refused by the conflict policy, which can only happen if those rows are
+    genuinely still in the destination. A's identifiers, meanwhile, commit
+    again freely.
+    """
+    # 1 and 2: both migrations commit.
+    a = upload(client, CLEAN, "a.csv")
+    a_run, _ = approve_and_run(client, a)
+    a_commit = client.post(f"/api/migrations/{a}/runs/{a_run}/commit", json={}).json()
+    assert a_commit["written"] == CLEAN_ROWS
+
+    b = upload(client, CLEAN_B, "b.csv")
+    b_run, _ = approve_and_run(client, b)
+    b_commit = client.post(f"/api/migrations/{b}/runs/{b_run}/commit", json={}).json()
+    assert b_commit["written"] == CLEAN_B_ROWS
+    assert b_commit["skipped"] == 0, "B must not collide with A"
+
+    # 3: both sets are in the destination at the same time.
+    for migration_id, expected in ((a, CLEAN_ROWS), (b, CLEAN_B_ROWS)):
+        evidence = client.get(f"/api/migrations/{migration_id}/evidence").json()
+        assert evidence["commit"]["written_rows"] == expected
+        assert evidence["state"] == "committed"
+
+    # 4 and 5: rolling A back removes exactly A's rows.
+    rolled = client.post(f"/api/migrations/{a}/rollback")
+    assert rolled.status_code == 200, rolled.text
+    assert rolled.json()["rows_removed"] == CLEAN_ROWS
+
+    # 6: B's rows are untouched. A fresh migration carrying B's identifiers is
+    # still refused, which is only possible while those rows remain.
+    b_again = upload(client, CLEAN_B, "b-again.csv")
+    b_again_run, _ = approve_and_run(client, b_again)
+    blocked = client.post(
+        f"/api/migrations/{b_again}/runs/{b_again_run}/commit", json={}
+    )
+    assert blocked.status_code == 409, blocked.text
+    assert blocked.json()["kind"] == "commit_gate"
+    assert "00701" in blocked.json()["detail"]
+
+    # A's identifiers are free again, so the same file commits a second time.
+    a_again = upload(client, CLEAN, "a-again.csv")
+    a_again_run, _ = approve_and_run(client, a_again)
+    recommitted = client.post(
+        f"/api/migrations/{a_again}/runs/{a_again_run}/commit", json={}
+    )
+    assert recommitted.status_code == 200, recommitted.text
+    assert recommitted.json()["written"] == CLEAN_ROWS
+
+    # 7: B is still committed, with its commit record unchanged.
+    b_evidence = client.get(f"/api/migrations/{b}/evidence").json()
+    assert b_evidence["state"] == "committed"
+    assert b_evidence["commit"]["written_rows"] == CLEAN_B_ROWS
+    assert b_evidence["commit"]["skipped_rows"] == 0
+
+    # 8: A recorded the rollback, and its state moved with it.
+    a_detail = client.get(f"/api/migrations/{a}").json()
+    assert a_detail["state"] == "rolled_back"
+    a_events = client.get(f"/api/migrations/{a}/events").json()["events"]
+    assert any(
+        f"Rolled back {CLEAN_ROWS} row(s)" in event["message"] for event in a_events
+    )
+
+
+def test_two_migrations_with_distinct_identifiers_both_commit(client):
+    """The precondition the isolation test depends on.
+
+    If this fails, the isolation test above is proving nothing, so it is
+    asserted separately rather than assumed.
+    """
+    a = upload(client, CLEAN, "a.csv")
+    a_run, _ = approve_and_run(client, a)
+    assert (
+        client.post(f"/api/migrations/{a}/runs/{a_run}/commit", json={}).status_code
+        == 200
+    )
+
+    b = upload(client, CLEAN_B, "b.csv")
+    b_run, _ = approve_and_run(client, b)
+    response = client.post(f"/api/migrations/{b}/runs/{b_run}/commit", json={})
+    assert response.status_code == 200, response.text
+    assert response.json()["skipped"] == 0
+
+
+def test_delete_after_rollback_leaves_other_migrations_alone(client):
+    keep = upload(client)
+    approve_and_run(client, keep)
+
+    discard = upload(client)
+    assert client.delete(f"/api/migrations/{discard}").status_code == 204
+
+    assert client.get(f"/api/migrations/{keep}").status_code == 200
+    assert client.get(f"/api/migrations/{keep}/evidence").status_code == 200
+
+
+def test_deletion_writes_no_event_for_the_record_it_destroys(client):
+    """An audit row inserted microseconds before its own cascade has no reader.
+
+    Asserted through the observable consequence: the delete succeeds and the
+    events are gone with everything else.
+    """
+    migration_id = upload(client)
+    approve_and_run(client, migration_id)
+    assert client.get(f"/api/migrations/{migration_id}/events").status_code == 200
+
+    assert client.delete(f"/api/migrations/{migration_id}").status_code == 204
+    assert client.get(f"/api/migrations/{migration_id}/events").status_code == 404

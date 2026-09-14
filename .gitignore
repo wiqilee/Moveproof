@@ -78,3 +78,5 @@ gcp-credentials.json
 
 # Local submission checklist
 REPLACE-BEFORE-SUBMIT.md
+.env*
+!.env.local.example

@@ -53,6 +53,7 @@ The smallest tier is enough for this workload.
 ```bash
 gcloud sql instances create moveproof \
   --database-version=POSTGRES_16 \
+  --edition=ENTERPRISE \
   --tier=db-f1-micro \
   --region="$GCP_REGION" \
   --storage-size=10GB \
@@ -126,9 +127,7 @@ silently reporting `not_verified` in production.
 gcloud artifacts repositories create moveproof \
   --repository-format=docker --location="$GCP_REGION"
 
-gcloud builds submit \
-  --tag "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/moveproof/backend:latest" \
-  --file backend/Dockerfile .
+gcloud builds submit --config deploy/cloudbuild.yaml .
 
 sed -e "s/PROJECT_ID/$GCP_PROJECT_ID/g" -e "s/REGION/$GCP_REGION/g" \
   deploy/cloudrun.yaml > /tmp/cloudrun.resolved.yaml

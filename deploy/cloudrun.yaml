@@ -46,11 +46,11 @@ spec:
             - name: MODEL_SAMPLE_ROWS
               value: "5"
             - name: CORS_ORIGINS
-              value: "https://moveproof.vercel.app"
+              value: "https://moveproof-wiqi.vercel.app"
             - name: NEBIUS_BASE_URL
-              value: "https://api.studio.nebius.com/v1"
+              value: "https://api.tokenfactory.nebius.com/v1"
             - name: NEBIUS_MODEL_ID
-              value: "REPLACE_WITH_MODEL_ID_FROM_SMOKE_TEST"
+              value: "nvidia/nemotron-3-super-120b-a12b"
             - name: MOVEPROOF_VERIFIER_BIN
               value: "/usr/local/bin/moveproof-verifier"
             - name: DATABASE_URL

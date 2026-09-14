@@ -12,7 +12,7 @@ An AI-assisted data migration workspace that verifies its own work and shows you
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-15803D.svg)](https://fastapi.tiangolo.com)
 [![Rust](https://img.shields.io/badge/Rust-2021-B45309.svg)](https://www.rust-lang.org)
 
-[Live app](https://moveproof-wiqi.vercel.app/) · [Demo video](https://youtube.com/watch?v=REPLACE_WITH_DEMO_ID) · [Devpost entry](https://devpost.com/software/moveproof) · [Hackathon](https://nebiusglobalaihackathon.devpost.com/)
+[Live app](https://moveproof.vercel.app) · [Demo video](https://youtube.com/watch?v=REPLACE_WITH_DEMO_ID) · [Devpost entry](https://devpost.com/software/moveproof) · [Hackathon](https://nebiusglobalaihackathon.devpost.com/)
 
 Built by [Wiqi Lee](https://x.com/wiqi_lee) for the Nebius x NVIDIA Global AI Hackathon 2026.
 
@@ -111,19 +111,40 @@ MoveProof distinguishes between implemented, tested, and externally integrated f
 | FastAPI endpoints and status taxonomy | Yes | **Verified locally and in CI** | `make test-db` |
 | Rust verifier | Yes | **Verified in CI** | `make rust-test` |
 | Frontend type checking, linting, and build | Yes | **Verified in CI** | `npm run typecheck && npm run lint && npm run build` |
-| Frontend-to-backend workflow | Yes | **Running locally; final browser walkthrough pending** | Start both services and walk the demo |
-| Live Nebius Token Factory inference | Yes | **Pending live credential integration** | `make smoke` |
-| Production deployment | Configured | **In progress** | See `deploy/DEPLOYMENT.md` |
+| Verified CSV export | Yes | **Verified locally and in CI** | `make test-db` |
+| Frontend-to-backend workflow | Yes | **Verified in production** | Walk the demo on the deployed app |
+| Live Nebius Token Factory inference | Yes | **Verified live** | `make smoke` |
+| Production deployment | Yes | **Verified in production** | See [deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md) |
 
 Latest local verification:
 
-- `make test-core`: **96 passed, 1 skipped, 0 failed**
-- `make test-db`: **80 passed, 0 failed**
+- `make test-core`: **113 passed, 1 skipped, 0 failed**
+- `make test-db`: **106 passed, 0 failed**
+- `npm run typecheck`, `npm run lint`, `npm run build`: **all passing**
 - GitHub Actions: **frontend, backend with PostgreSQL, Rust verifier, and repository hygiene all passing**
 
 The single skip in the core suite is the branch that only runs when the Rust binary is absent, and it skips because the binary is present.
 
-Live Nebius inference and production deployment are listed separately because they depend on external credentials and hosted infrastructure.
+### Production
+
+The stack is deployed and the full browser workflow has been exercised end to end against it.
+
+| Layer | Where it runs |
+| --- | --- |
+| Frontend | Vercel |
+| Backend | Google Cloud Run |
+| Database | Cloud SQL for PostgreSQL |
+| Private objects | Google Cloud Storage |
+| Canonical reconciliation | Rust verifier compiled into the backend container |
+| Inference | Nebius Token Factory, `nvidia/nemotron-3-super-120b-a12b` |
+
+The deployed `/health` endpoint reports PostgreSQL connected, Nebius configured, the Rust verifier available and PDF generation available. A real Token Factory request has succeeded against that model.
+
+The exercised path was upload, approval, staging, verification failure, repair, rerun, verification pass, commit, evidence report. The controlled legacy profile damaged all four zero-padded identifiers, the verifier failed both identifier preservation and canonical row reconciliation, the repair reran from the stored original bytes rather than the damaged staged integer, and the rerun passed with nine checks passed, zero failed, zero review required and two advisory checks reported as not verified. Four rows were committed with none skipped under the fail-closed policy. JSON, HTML and PDF evidence and the verified CSV export were all produced from the deployed backend.
+
+That run was subsequently rolled back and deleted through the API, so the production workspace is empty again.
+
+This describes one exercised workflow. It is not a claim that every possible semantic error has been ruled out, and the limitations section of every evidence report still applies.
 
 ---
 
@@ -521,7 +542,7 @@ Moveproof/
 │   ├── app/
 │   │   ├── config.py                       Settings, safe defaults, no secret defaults
 │   │   ├── api/
-│   │   │   └── main.py                     18 endpoints plus 2 aliases, deliberately thin
+│   │   │   └── main.py                     19 endpoints plus 2 aliases, deliberately thin
 │   │   ├── services/
 │   │   │   ├── pipeline.py                 Every workflow decision lives here
 │   │   │   └── evidence.py                 The canonical evidence object
@@ -642,7 +663,7 @@ Moveproof/
 
 ## The API
 
-Eighteen primary endpoints, plus two compatibility aliases for the report routes.
+Nineteen primary endpoints, plus two compatibility aliases for the report routes.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -666,6 +687,7 @@ Eighteen primary endpoints, plus two compatibility aliases for the report routes
 | GET | `/api/migrations/{id}/evidence` | The canonical evidence object as JSON |
 | GET | `/api/migrations/{id}/report/html` | The same object as a standalone HTML document |
 | GET | `/api/migrations/{id}/report/pdf` | The same object as a PDF |
+| GET | `/api/migrations/{id}/export/csv` | The verified transformed dataset as CSV |
 
 The two aliases, `/api/migrations/{id}/report.html` and `/api/migrations/{id}/report.pdf`, were the canonical paths for one release and remain registered so existing links keep working. Both are covered by tests.
 
@@ -769,6 +791,12 @@ The evidence object carries the migration and run IDs, the source checksum and s
 
 The PDF is generated server side with reportlab: A4, repeated table headers so a long check list stays readable across pages, and a footer carrying the migration id, run id and page number so a printed sheet can be traced back. When reportlab is unavailable, `/health` says so and the interface disables the action rather than offering a button that fails.
 
+### The verified dataset is separate from the evidence
+
+JSON, HTML and PDF describe what happened to the data. `GET /api/migrations/{id}/export/csv` returns the data itself: the transformed rows exactly as they passed verification, read from storage rather than assembled in the browser.
+
+It is available once a run is verified with nothing mandatory outstanding, and remains available after commit. A failed or unverified run is refused with a workflow error rather than exported under a filename that says verified. Identifiers are written as text, so `00127` stays `00127`.
+
 ---
 
 ## Security
@@ -800,7 +828,9 @@ Please follow the private reporting instructions in `SECURITY.md`. Do not includ
 
 Full instructions, including cost controls and a six-point verification checklist, are in [deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md).
 
-Target production architecture: frontend on Vercel, backend on Cloud Run from a two-stage image that compiles and tests the Rust verifier, PostgreSQL on Cloud SQL, files in a private Cloud Storage bucket with 90-day lifecycle deletion, and inference on Nebius.
+The deployed architecture: frontend on Vercel, backend on Cloud Run from a two-stage image that compiles and tests the Rust verifier, PostgreSQL on Cloud SQL, files in a private Cloud Storage bucket with 90-day lifecycle deletion, and inference on Nebius Token Factory.
+
+The Nebius credential lives in Secret Manager and is read by Cloud Run. It is never placed in a Vercel environment variable, never carries a `NEXT_PUBLIC_` prefix, and never reaches browser code.
 
 Two notes worth repeating. A Google Cloud budget alert is a notification, not a spending cap; the controls that actually bound spend are `maxScale` on Cloud Run and stopping the SQL instance between demonstrations. And no GPU is provisioned anywhere, because Token Factory serves the model.
 
@@ -843,7 +873,7 @@ It navigates and it changes the theme. It cannot approve a plan, run a verificat
 - [x] Hardened approval bound to a contract hash, with recorded acknowledgements
 - [x] PostgreSQL staging, idempotent runs, fail-closed commit gate, rollback
 - [x] Original source bytes preserved with integrity checks
-- [x] FastAPI with 18 primary endpoints, 2 compatibility aliases, and a canonical evidence object
+- [x] FastAPI with 19 primary endpoints, 2 compatibility aliases, and a canonical evidence object
 - [x] Workspace fully wired to the backend; the public landing page uses a clearly labeled synthetic preview
 - [x] Rust verifier with a real pipeline role and parity tests
 - [x] HTML, JSON and PDF reports from one object
@@ -851,13 +881,11 @@ It navigates and it changes the theme. It cannot approve a plan, run a verificat
 - [x] Synthetic generator with twelve hazard kinds and a test-only manifest
 - [x] Deployment configuration and CI across all three languages
 - [x] Database and API suites passing against real PostgreSQL, locally and in CI
-
-### Before submission
-
-- [ ] Complete a real Nebius Token Factory call and record the model ID
-- [ ] Deploy the production stack and run the deployment checklist
-- [ ] Replace remaining placeholder links in `src/lib/site.ts`
-- [ ] Record and publish the demo video
+- [x] Verified CSV export of the transformed dataset
+- [x] Delete and rollback available from the interface
+- [x] Production stack deployed on Vercel, Cloud Run, Cloud SQL and Nebius
+- [x] Live Nebius Token Factory inference against `nvidia/nemotron-3-super-120b-a12b`
+- [x] Full production browser workflow exercised end to end
 
 ### Considered and deliberately deferred
 
