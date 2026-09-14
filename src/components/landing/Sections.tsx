@@ -152,40 +152,66 @@ const PRINCIPLES = [
 export function Approach() {
   return (
     <section id="approach" className="border-b border-line bg-surface">
-      <div className="mx-auto max-w-6xl px-5 py-20 sm:px-6">
-        <div className="max-w-2xl">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
-            The approach
-          </p>
-          <h2 className="mt-4 text-3xl font-semibold tracking-[-0.02em] sm:text-[2.5rem]">
+      <div className="mx-auto max-w-6xl px-5 py-20 sm:px-6 lg:py-24">
+        <div className="max-w-3xl">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
+        The approach
+        </p>
+
+          <h2 className="mt-5 text-3xl font-semibold tracking-[-0.025em] sm:text-[2.5rem]">
             Three rules the code enforces
           </h2>
-          <p className="mt-4 text-[15px] leading-relaxed text-ink-soft">
+
+          <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-ink-soft">
             Each of these is a constraint in the domain layer rather than a promise in the
             interface, which is why a new screen cannot quietly break one.
           </p>
         </div>
 
-        <div className="mt-12 divide-y divide-line border-y border-line">
+        <div className="mt-12 grid gap-4 lg:grid-cols-3">
           {PRINCIPLES.map((principle, index) => (
-            <div key={principle.title} className="grid gap-4 py-8 lg:grid-cols-[auto_minmax(0,5fr)_minmax(0,4fr)] lg:gap-10">
-              <p className="font-mono text-sm text-ink-soft lg:w-10">
-                {String(index + 1).padStart(2, "0")}
-              </p>
-              <h3 className="text-xl font-semibold tracking-[-0.01em]">{principle.title}</h3>
-              <div>
-                <p className="text-sm leading-relaxed text-ink-soft">{principle.body}</p>
-                <p className="mt-3 font-mono text-[11px] text-ink-soft">{principle.example}</p>
+            <article
+              key={principle.title}
+              className="group flex min-h-full flex-col rounded-card border border-line bg-surface p-6 transition-all duration-200 hover:-translate-y-0.5 hover:border-brand/40 hover:bg-muted/30"
+            >
+              <div className="flex items-center justify-between">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-control border border-line bg-muted/50 font-mono text-xs font-medium text-brand">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-brand opacity-60 transition-opacity group-hover:opacity-100"
+                  aria-hidden
+                />
               </div>
-            </div>
+
+              <h3 className="mt-7 text-xl font-semibold tracking-[-0.015em]">
+                {principle.title}
+              </h3>
+
+              <p className="mt-4 text-sm leading-6 text-ink-soft">
+                {principle.body}
+              </p>
+
+              <div className="mt-auto pt-7">
+                <div className="border-t border-line pt-4">
+                  <p className="font-mono text-[11px] leading-relaxed text-ink-soft">
+                    {principle.example}
+                  </p>
+                </div>
+              </div>
+            </article>
           ))}
         </div>
 
-        <p className="mt-8 max-w-2xl text-sm leading-relaxed text-ink-soft">
-          A passed verification means the invariants in the approved contract held. It does not mean
-          every possible semantic error has been ruled out, and the evidence report says so in its
-          own limitations section.
-        </p>
+        <div className="mt-8 flex gap-4 rounded-card border border-line bg-muted/30 px-5 py-4">
+          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" aria-hidden />
+          <p className="text-sm leading-relaxed text-ink-soft">
+            A passed verification means the invariants in the approved contract held. It does not
+            mean every possible semantic error has been ruled out, and the evidence report says so
+            in its own limitations section.
+          </p>
+        </div>
       </div>
     </section>
   );
