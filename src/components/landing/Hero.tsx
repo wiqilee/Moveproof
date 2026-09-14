@@ -41,7 +41,7 @@ export function Hero() {
             </div>
 
             <p className="mt-6 text-xs leading-relaxed text-ink-soft">
-              Running on a synthetic dataset. No live model or database call is made in this build.
+            The preview on this page is synthetic. Live migrations in the workspace use the deployed backend, database, verifier, and configured AI model.
             </p>
           </div>
 
