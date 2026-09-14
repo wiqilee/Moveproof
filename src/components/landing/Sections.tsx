@@ -134,7 +134,7 @@ export function HowItWorks() {
 const PRINCIPLES = [
   {
     title: "The checker is not the author",
-    body: "The model proposes transformations. A separate verifier, with its own contract and no shared code, decides whether they held. A model confirming its own output would not be verification.",
+    body: "In the model-assisted profile, the model proposes transformations. A separate verifier, with its own contract and no shared code, decides whether they held. A model confirming its own output would not be verification.",
     example: "Planner and verifier are separate modules by construction.",
   },
   {
@@ -236,15 +236,19 @@ export function Technology() {
               ))}
             </ul>
 
+            {planned.length > 0 && (
+            <>
             <h3 className="mt-7 text-sm font-semibold">Designed but not yet connected</h3>
             <ul className="mt-4 space-y-2.5">
-              {planned.map((item) => (
-                <li key={item.label} className="flex items-start gap-2.5 text-sm text-ink-soft">
-                  <Minus size={15} className="mt-0.5 shrink-0 text-line" aria-hidden />
-                  <span>{item.label}</span>
-                </li>
-              ))}
-            </ul>
+            {planned.map((item) => (
+            <li key={item.label} className="flex items-start gap-2.5 text-sm text-ink-soft">
+              <Minus size={15} className="mt-0.5 shrink-0 text-line" aria-hidden />
+            <span>{item.label}</span>
+          </li>
+        ))}
+    </ul>
+  </>
+)}
 
             <p className="mt-6 border-t border-line pt-4 text-xs leading-relaxed text-ink-soft">
               Nebius and NVIDIA are named to describe technologies used by MoveProof. Neither company

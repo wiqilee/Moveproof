@@ -1,16 +1,12 @@
 /**
- * Site level constants.
+ * Site-level constants.
  *
- * Every external destination lives here, so replacing a placeholder is a
- * one line edit in one file rather than a search across components.
+ * Every external destination lives here so updates stay centralized rather
+ * than being scattered across components.
  *
- * The URLs below are placeholders. Swap each one for the real destination
- * before submitting, and the navigation bar, the footer and the social icons
- * all pick up the change automatically.
- *
- * The `verified` flag exists for the case where a destination genuinely does
- * not exist yet: set it to false and that entry renders as muted text marked
- * pending instead of as a link. Everything is true by default.
+ * The `verified` flag indicates whether a destination currently exists and is
+ * ready to be linked publicly. When false, the interface can render that
+ * destination as pending instead of exposing a placeholder URL.
  */
 
 export interface ExternalLink {
@@ -23,7 +19,7 @@ export const SITE = {
   name: "MoveProof",
   tagline: "Move data. Prove what changed.",
   description:
-    "An AI assisted data migration workspace. Turn messy spreadsheets into structured database records with AI assisted mapping, independent verification and a clear audit trail.",
+    "An AI-assisted data migration workspace that turns messy spreadsheets into structured database records with model-assisted mapping, deterministic execution, independent verification, and auditable evidence.",
 } as const;
 
 export const AUTHOR = {
@@ -81,16 +77,17 @@ export const HACKATHON = {
 } as const;
 
 /**
- * What is actually running today, as opposed to what the architecture is
- * designed for. The landing page renders this list directly so the two can
- * never drift apart.
+ * Capabilities that are currently implemented and running in MoveProof.
+ * The landing page renders this list directly, so public product claims stay
+ * aligned with the actual implementation.
  */
 export const IMPLEMENTATION_STATUS: { label: string; state: "live" | "planned" }[] = [
-  { label: "Plan versioning and the operation allowlist", state: "live" },
-  { label: "Independent verification engine, four result categories", state: "live" },
-  { label: "Discrepancy explorer and evidence report", state: "live" },
-  { label: "JSON export from the canonical evidence object", state: "live" },
-  { label: "Nemotron inference through Nebius Token Factory", state: "planned" },
-  { label: "FastAPI backend and PostgreSQL staging", state: "planned" },
-  { label: "Server side PDF generation", state: "planned" },
+  { label: "Plan versioning and operation allowlist", state: "live" },
+  { label: "Independent verification engine with four result categories", state: "live" },
+  { label: "Discrepancy explorer and auditable evidence reports", state: "live" },
+  { label: "Verified CSV export from stored verified data", state: "live" },
+  { label: "JSON, HTML and PDF evidence exports", state: "live" },
+  { label: "Nemotron inference through Nebius Token Factory", state: "live" },
+  { label: "FastAPI backend with PostgreSQL staging and commit gates", state: "live" },
+  { label: "Rust verifier for canonical reconciliation", state: "live" },
 ];
