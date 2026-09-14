@@ -76,7 +76,7 @@ const STAGES = [
   },
   {
     title: "Approve the plan",
-    body: "A model proposes a typed mapping and marks what it is unsure about. A risky operation cannot be approved without an explicit acknowledgement.",
+    body: "In the model-assisted profile, an NVIDIA model proposes a typed mapping and flags uncertainty. Risky operations cannot be approved without explicit acknowledgement.",
     detail: "Plan v1 · 7 operations · 2 review required",
   },
   {
@@ -103,8 +103,8 @@ export function HowItWorks() {
             Eight stages run end to end
           </h2>
           <p className="mt-4 text-[15px] leading-relaxed text-ink-soft">
-            Inspect, plan, review, stage, verify, repair, commit, report. These four are the points
-            where a decision is yours to make.
+            Inspect, plan, review, stage, verify, repair, commit, report. Four of those stages
+            require an explicit decision from you.
           </p>
         </div>
 
@@ -209,18 +209,19 @@ export function Technology() {
             </p>
             <h2 className="mt-4 text-3xl font-semibold leading-tight tracking-[-0.02em] sm:text-[2.5rem]">
               AI proposes.
-              <br />
-              Deterministic code decides.
+            <br />
+              Validated code executes.
             </h2>
             <p className="mt-5 max-w-md text-[15px] leading-relaxed text-ink-soft">
               The architecture treats model output as untrusted input. Proposals are validated
               against an allowlist of supported operations, executed exactly as approved in an
-              isolated staging schema, then checked by an independent verifier before anything
-              counts as a result.
+              isolated staging schema, and then checked by an independent verifier before any
+              commit is allowed.
             </p>
             <p className="mt-4 max-w-md text-[15px] leading-relaxed text-ink-soft">
-              Inference is designed to run on an NVIDIA open source model served through Nebius
-              Token Factory. Full datasets are never sent, only a schema summary and a small sample.
+              Inference runs on the NVIDIA open-source model nvidia/nemotron-3-super-120b-a12b,
+              served through Nebius Token Factory. Full datasets are never sent to the model;
+              only a schema summary and a small sample of rows are used for model-assisted reasoning.
             </p>
           </div>
 
@@ -246,7 +247,7 @@ export function Technology() {
             </ul>
 
             <p className="mt-6 border-t border-line pt-4 text-xs leading-relaxed text-ink-soft">
-              Nebius and NVIDIA are named to describe the intended technology. Neither company
+              Nebius and NVIDIA are named to describe technologies used by MoveProof. Neither company
               endorses this project.
             </p>
           </div>
@@ -269,7 +270,7 @@ export function ClosingCta() {
         </h2>
         <p className="mx-auto mt-4 max-w-lg text-[15px] leading-relaxed text-on-navy/75">
           Walk the full workflow on the synthetic dataset, from the proposed plan to the failed
-          invariant to the signed off evidence report.
+          invariant, repair, verification, and final evidence report.
         </p>
         <Link
           href={routes.workspace}
