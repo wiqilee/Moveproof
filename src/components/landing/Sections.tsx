@@ -152,67 +152,76 @@ const PRINCIPLES = [
 export function Approach() {
   return (
     <section id="approach" className="border-b border-line bg-surface">
-      <div className="mx-auto max-w-6xl px-5 py-20 sm:px-6 lg:py-24">
-        <div className="max-w-3xl">
+      <div className="mx-auto max-w-6xl px-5 py-20 sm:px-6 sm:py-24">
+        <div className="max-w-2xl">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
-        The approach
-        </p>
-
-          <h2 className="mt-5 text-3xl font-semibold tracking-[-0.025em] sm:text-[2.5rem]">
+  The approach
+</p>
+          <h2 className="mt-5 text-3xl font-semibold tracking-[-0.025em] sm:text-[2.5rem] sm:leading-[1.1]">
             Three rules the code enforces
           </h2>
-
-          <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-ink-soft">
+          <p className="mt-5 text-[15px] leading-relaxed text-ink-soft">
             Each of these is a constraint in the domain layer rather than a promise in the
             interface, which is why a new screen cannot quietly break one.
           </p>
         </div>
 
-        <div className="mt-12 grid gap-4 lg:grid-cols-3">
+        <ol className="mt-14 space-y-3">
           {PRINCIPLES.map((principle, index) => (
-            <article
-              key={principle.title}
-              className="group flex min-h-full flex-col rounded-card border border-line bg-surface p-6 transition-all duration-200 hover:-translate-y-0.5 hover:border-brand/40 hover:bg-muted/30"
-            >
-              <div className="flex items-center justify-between">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-control border border-line bg-muted/50 font-mono text-xs font-medium text-brand">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-
+            <li key={principle.title}>
+              {/* The left rule is the only thing that moves on hover: it picks up
+                  the brand colour and widens by a pixel. Enough to feel
+                  responsive, not enough to distract from reading. */}
+              <article className="group relative rounded-card border border-line bg-canvas/40 transition-colors duration-200 hover:border-line hover:bg-muted/40">
                 <span
-                  className="h-1.5 w-1.5 rounded-full bg-brand opacity-60 transition-opacity group-hover:opacity-100"
+                  className="absolute inset-y-4 left-0 w-px bg-line transition-all duration-200 group-hover:inset-y-3 group-hover:w-0.5 group-hover:bg-brand"
                   aria-hidden
                 />
-              </div>
 
-              <h3 className="mt-7 text-xl font-semibold tracking-[-0.015em]">
-                {principle.title}
-              </h3>
+                <div className="grid gap-x-10 gap-y-4 px-6 py-7 sm:px-8 sm:py-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+                  <div className="flex items-start gap-4 lg:gap-5">
+                    <span
+                      className="mt-0.5 shrink-0 font-mono text-[13px] tabular-nums text-ink-soft/70 transition-colors duration-200 group-hover:text-brand"
+                      aria-hidden
+                    >
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <h3 className="text-[1.35rem] font-semibold leading-snug tracking-[-0.015em] sm:text-2xl">
+                      {principle.title}
+                    </h3>
+                  </div>
 
-              <p className="mt-4 text-sm leading-6 text-ink-soft">
-                {principle.body}
-              </p>
+                  <div className="lg:pt-1">
+                    <p className="text-[15px] leading-relaxed text-ink-soft">{principle.body}</p>
 
-              <div className="mt-auto pt-7">
-                <div className="border-t border-line pt-4">
-                  <p className="font-mono text-[11px] leading-relaxed text-ink-soft">
-                    {principle.example}
-                  </p>
+                    {/* The example reads as an annotation on the rule above it,
+                        not as body copy. The short rule and the monospace face
+                        mark it as evidence rather than prose. */}
+                    <p className="mt-5 flex items-start gap-3">
+                      <span className="mt-[0.45rem] h-px w-4 shrink-0 bg-line" aria-hidden />
+                      <span className="font-mono text-[11.5px] leading-relaxed tracking-tight text-ink-soft/80">
+                        {principle.example}
+                      </span>
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </article>
+              </article>
+            </li>
           ))}
-        </div>
+        </ol>
 
-        <div className="mt-8 flex gap-4 rounded-card border border-line bg-muted/30 px-5 py-4">
-          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" aria-hidden />
-          <p className="text-sm leading-relaxed text-ink-soft">
-            A passed verification means the invariants in the approved contract held. It does not
-            mean every possible semantic error has been ruled out, and the evidence report says so
-            in its own limitations section.
-          </p>
-        </div>
-      </div>
+        <div className="mt-10 grid gap-4 border-t border-line pt-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-10">
+  <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
+    Verification boundary
+  </p>
+
+  <p className="text-sm leading-relaxed text-ink-soft">
+    A passed verification means the invariants in the approved contract held. It does not mean
+    every possible semantic error has been ruled out, and the evidence report says so in its
+    own limitations section.
+  </p>
+</div>
+</div>
     </section>
   );
 }
