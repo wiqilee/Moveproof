@@ -152,33 +152,32 @@ const PRINCIPLES = [
 export function Approach() {
   return (
     <section id="approach" className="border-b border-line bg-surface">
-      <div className="mx-auto max-w-6xl px-5 py-20 sm:px-6 sm:py-24">
+      <div className="mx-auto max-w-6xl px-5 py-16 sm:px-6 sm:py-20">
         <div className="max-w-2xl">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
-  The approach
-</p>
-          <h2 className="mt-5 text-3xl font-semibold tracking-[-0.025em] sm:text-[2.5rem] sm:leading-[1.1]">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
+            The approach
+          </p>
+
+          <h2 className="mt-4 text-3xl font-semibold tracking-[-0.025em] sm:text-[2.5rem] sm:leading-[1.1]">
             Three rules the code enforces
           </h2>
-          <p className="mt-5 text-[15px] leading-relaxed text-ink-soft">
+
+          <p className="mt-3 text-[15px] leading-relaxed text-ink-soft">
             Each of these is a constraint in the domain layer rather than a promise in the
             interface, which is why a new screen cannot quietly break one.
           </p>
         </div>
 
-        <ol className="mt-14 space-y-3">
+        <ol className="mt-8 space-y-2.5">
           {PRINCIPLES.map((principle, index) => (
             <li key={principle.title}>
-              {/* The left rule is the only thing that moves on hover: it picks up
-                  the brand colour and widens by a pixel. Enough to feel
-                  responsive, not enough to distract from reading. */}
-              <article className="group relative rounded-card border border-line bg-canvas/40 transition-colors duration-200 hover:border-line hover:bg-muted/40">
+              <article className="group relative rounded-card border border-line bg-canvas/40 transition-colors duration-200 hover:bg-muted/40">
                 <span
                   className="absolute inset-y-4 left-0 w-px bg-line transition-all duration-200 group-hover:inset-y-3 group-hover:w-0.5 group-hover:bg-brand"
                   aria-hidden
                 />
 
-                <div className="grid gap-x-10 gap-y-4 px-6 py-7 sm:px-8 sm:py-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+                <div className="grid gap-x-10 gap-y-3 px-6 py-5 sm:px-7 sm:py-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
                   <div className="flex items-start gap-4 lg:gap-5">
                     <span
                       className="mt-0.5 shrink-0 font-mono text-[13px] tabular-nums text-ink-soft/70 transition-colors duration-200 group-hover:text-brand"
@@ -186,19 +185,22 @@ export function Approach() {
                     >
                       {String(index + 1).padStart(2, "0")}
                     </span>
-                    <h3 className="text-[1.35rem] font-semibold leading-snug tracking-[-0.015em] sm:text-2xl">
+
+                    <h3 className="text-xl font-semibold leading-snug tracking-[-0.015em] sm:text-[1.35rem]">
                       {principle.title}
                     </h3>
                   </div>
 
-                  <div className="lg:pt-1">
-                    <p className="text-[15px] leading-relaxed text-ink-soft">{principle.body}</p>
+                  <div>
+                    <p className="text-[15px] leading-relaxed text-ink-soft">
+                      {principle.body}
+                    </p>
 
-                    {/* The example reads as an annotation on the rule above it,
-                        not as body copy. The short rule and the monospace face
-                        mark it as evidence rather than prose. */}
-                    <p className="mt-5 flex items-start gap-3">
-                      <span className="mt-[0.45rem] h-px w-4 shrink-0 bg-line" aria-hidden />
+                    <p className="mt-4 flex items-start gap-3">
+                      <span
+                        className="mt-[0.45rem] h-px w-4 shrink-0 bg-line"
+                        aria-hidden
+                      />
                       <span className="font-mono text-[11.5px] leading-relaxed tracking-tight text-ink-soft/80">
                         {principle.example}
                       </span>
@@ -210,18 +212,18 @@ export function Approach() {
           ))}
         </ol>
 
-        <div className="mt-10 grid gap-4 border-t border-line pt-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-10">
-  <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
-    Verification boundary
-  </p>
+        <div className="mt-8 grid gap-4 border-t border-line pt-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-10">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
+            Verification boundary
+          </p>
 
-  <p className="text-sm leading-relaxed text-ink-soft">
-    A passed verification means the invariants in the approved contract held. It does not mean
-    every possible semantic error has been ruled out, and the evidence report says so in its
-    own limitations section.
-  </p>
-</div>
-</div>
+          <p className="text-sm leading-relaxed text-ink-soft">
+            A passed verification means the invariants in the approved contract held. It does not
+            mean every possible semantic error has been ruled out, and the evidence report says so
+            in its own limitations section.
+          </p>
+        </div>
+      </div>
     </section>
   );
 }
