@@ -41,6 +41,14 @@ from app.db.repository import (
     SourceIntegrityError,
     SourceUnavailable,
 )
+from app.evidence.query_builder import EvidenceContext, available_questions
+from app.evidence.service import (
+    EvidenceNotConfigured,
+    EvidenceUnavailable,
+    check as run_evidence_check,
+    history as evidence_history,
+    is_available as evidence_available,
+)
 from app.ingest.parser import ParseError
 from app.services import pipeline
 from app.services.pipeline import PipelineError
@@ -102,6 +110,29 @@ async def _integrity_error(request: Request, exc: SourceIntegrityError) -> JSONR
     return JSONResponse(status_code=409, content={"detail": str(exc), "kind": "integrity"})
 
 
+@app.exception_handler(EvidenceNotConfigured)
+async def _evidence_not_configured(
+    request: Request, exc: EvidenceNotConfigured
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={"detail": str(exc), "kind": "evidence_unavailable"},
+    )
+
+
+@app.exception_handler(EvidenceUnavailable)
+async def _evidence_unavailable(request: Request, exc: EvidenceUnavailable) -> JSONResponse:
+    """502, because the failure is upstream rather than in this request.
+
+    Distinct from a workflow conflict: nothing about the migration is wrong,
+    the external provider simply did not answer.
+    """
+    return JSONResponse(
+        status_code=502,
+        content={"detail": str(exc), "kind": "evidence_unavailable"},
+    )
+
+
 @app.exception_handler(SourceUnavailable)
 async def _source_unavailable(request: Request, exc: SourceUnavailable) -> JSONResponse:
     return JSONResponse(status_code=503, content={"detail": str(exc), "kind": "source"})
@@ -156,6 +187,14 @@ def health() -> dict[str, Any]:
             # The button is shown when the backend says the route exists, not
             # because the frontend assumes it does.
             "verified_csv_available": True,
+        },
+        "external_evidence": {
+            "available": evidence_available(),
+            "provider": "tavily",
+            "note": (
+                "Advisory context for a human reviewer. It never verifies "
+                "anything and never changes a check result."
+            ),
         },
         "reports": {
             # The frontend disables the PDF action when this is false rather
@@ -517,6 +556,75 @@ def export_verified_csv(migration_id: str, conn=Depends(db)) -> Response:
             ),
         },
     )
+
+
+@app.get("/api/evidence/questions")
+def evidence_questions() -> dict[str, Any]:
+    """The questions a reviewer may ask.
+
+    The interface offers these rather than a text box. Free-form search would
+    make it possible to send a row value to an external provider by accident.
+    """
+    return {"questions": available_questions(), "provider": "tavily"}
+
+
+@app.post("/api/migrations/{migration_id}/external-evidence")
+def external_evidence(
+    migration_id: str, body: dict[str, Any], conn=Depends(db)
+) -> dict[str, Any]:
+    """Fetch advisory external context for one ambiguous field.
+
+    Advisory only. This never verifies anything, never changes a check result,
+    a migration state, a plan or commit eligibility, and says so in its own
+    response.
+
+        200  advisory sources, possibly an empty list
+        404  the migration does not exist
+        422  the request carries something that must not be sent outward
+        502  the provider did not answer; the review is unchanged
+        503  no provider credential is configured on the backend
+    """
+    mid = _uuid(migration_id, "migration_id")
+
+    try:
+        context = EvidenceContext(
+            source_column=str(body.get("source_column", "")),
+            destination_column=str(body.get("destination_column", "")),
+            question=str(body.get("question", "")),
+            source_type=body.get("source_type"),
+            destination_type=body.get("destination_type"),
+            proposed_operation=body.get("proposed_operation"),
+            risk_category=body.get("risk_category"),
+            ambiguity_reason=body.get("ambiguity_reason"),
+            source_system=body.get("source_system"),
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=422, detail=f"Malformed evidence request: {exc}"
+        ) from exc
+
+    try:
+        return run_evidence_check(conn, mid, context)
+    except ValueError as exc:
+        # Raised by the query boundary when the request carries something it
+        # will not send to an external provider.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/migrations/{migration_id}/external-evidence")
+def external_evidence_history(migration_id: str, conn=Depends(db)) -> dict[str, Any]:
+    """Past evidence checks for this migration, newest first."""
+    rows = evidence_history(conn, _uuid(migration_id, "migration_id"))
+    return {
+        "checks": [
+            {
+                "message": row["message"],
+                "metadata": row["metadata"],
+                "checked_at": row["created_at"].isoformat(),
+            }
+            for row in rows
+        ]
+    }
 
 
 @app.get("/api/migrations/{migration_id}/evidence")

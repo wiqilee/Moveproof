@@ -76,7 +76,7 @@ const STAGES = [
   },
   {
     title: "Approve the plan",
-    body: "In the model-assisted profile, an NVIDIA model proposes a typed mapping and flags uncertainty. Risky operations cannot be approved without explicit acknowledgement.",
+    body: "In the model-assisted profile, an NVIDIA model proposes a typed mapping and flags uncertainty. For ambiguous fields, reviewers can pull metadata-only references through Tavily. The sources stay advisory and never affect verification or commit eligibility.",
     detail: "Plan v1 · 7 operations · 2 review required",
   },
   {

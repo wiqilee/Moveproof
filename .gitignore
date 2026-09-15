@@ -76,7 +76,11 @@ uploads/
 *-service-account.json
 gcp-credentials.json
 
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+!.env.local.example
+
 # Local submission checklist
 REPLACE-BEFORE-SUBMIT.md
-.env*
-!.env.local.example

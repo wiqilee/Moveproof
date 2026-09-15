@@ -762,23 +762,56 @@ def log_event(
     run_id: uuid.UUID | None,
     level: str,
     message: str,
+    event_type: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> None:
-    """Record an event. Field values are never written into the message."""
+    """Record an event. Field values are never written into the message.
+
+    `event_type` and `metadata` are optional so every existing call site keeps
+    working unchanged. They exist for events that carry structure worth
+    querying later, such as an external evidence check, where prose in
+    `message` would be neither readable nor searchable.
+    """
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO moveproof.events (migration_id, run_id, level, message)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO moveproof.events
+                (migration_id, run_id, level, message, event_type, metadata)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """,
-            (migration_id, run_id, level, message),
+            (
+                migration_id,
+                run_id,
+                level,
+                message,
+                event_type,
+                Jsonb(metadata) if metadata is not None else None,
+            ),
         )
+
+
+def list_events_by_type(
+    conn: psycopg.Connection, migration_id: uuid.UUID, event_type: str
+) -> list[dict[str, Any]]:
+    """Structured events of one kind, newest first."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT run_id, level, message, event_type, metadata, created_at
+            FROM moveproof.events
+            WHERE migration_id = %s AND event_type = %s
+            ORDER BY id DESC
+            """,
+            (migration_id, event_type),
+        )
+        return [dict(record) for record in cur.fetchall()]
 
 
 def list_events(conn: psycopg.Connection, migration_id: uuid.UUID) -> list[dict[str, Any]]:
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT run_id, level, message, created_at
+            SELECT run_id, level, message, event_type, created_at
             FROM moveproof.events WHERE migration_id = %s ORDER BY id
             """,
             (migration_id,),

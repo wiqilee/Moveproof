@@ -17,7 +17,7 @@ An AI-assisted data migration workspace that verifies its own work and shows you
 [![NVIDIA](https://img.shields.io/badge/NVIDIA-Nemotron-76B900.svg)](https://www.nvidia.com)
 [![Tavily](https://img.shields.io/badge/Tavily-External_Evidence-2563EB.svg)](https://tavily.com)
 
-[Live app](https://moveproof.vercel.app) · [Demo video](https://youtube.com/watch?v=REPLACE_WITH_DEMO_ID) · [Devpost entry](https://devpost.com/software/moveproof) · [Hackathon](https://nebiusglobalaihackathon.devpost.com/)
+[Live app](https://moveproof-wiqi.vercel.app) · [Demo video](https://youtube.com/watch?v=REPLACE_WITH_DEMO_ID) · [Devpost entry](https://devpost.com/software/moveproof) · [Hackathon](https://nebiusglobalaihackathon.devpost.com/)
 
 Built by [Wiqi Lee](https://x.com/wiqi_lee) for the Nebius x NVIDIA Global AI Hackathon 2026.
 
@@ -41,6 +41,7 @@ Built by [Wiqi Lee](https://x.com/wiqi_lee) for the Nebius x NVIDIA Global AI Ha
 - [Nebius and NVIDIA](#nebius-and-nvidia)
 - [The Rust verifier](#the-rust-verifier)
 - [Reports](#reports)
+- [External Evidence Check](#external-evidence-check)
 - [Security](#security)
 - [Deployment](#deployment)
 - [Design system](#design-system)
@@ -74,7 +75,7 @@ Three things make this worse in practice. The damage is silent: a migration that
 
 ## What MoveProof does
 
-Spreadsheet data goes into a structured database. The transformation is proposed by a model, executed by deterministic code, and then checked by a verifier that had no part in writing it.
+Spreadsheet data goes into a structured database. In the model-assisted profile, an NVIDIA model proposes a typed transformation plan; deterministic proposal profiles are also available. Validated deterministic code executes the approved plan, and an independent verifier checks the staged result.
 
 > **AI proposes. Validated code executes. Independent evidence decides. Humans approve ambiguity.**
 
@@ -86,7 +87,7 @@ Each clause is a constraint in the codebase rather than a slogan.
 
 **Evidence decides.** A verifier that shares no code with the planner reads the rows back out of the database and reports four outcomes that do not overlap: passed, failed, review required, and not verified. Commit is gated in the database layer against stored check rows, so a screen that forgets to disable a button still cannot commit.
 
-**Humans approve ambiguity.** When `03/04/2024` reads correctly two ways, the product asks. The answer becomes part of the versioned contract and is applied identically during execution and verification.
+**Humans approve ambiguity.** When `03/04/2024` reads correctly two ways, the product asks. The answer becomes part of the versioned contract and is applied identically during execution and verification. External references may inform that decision, but they never count as verification results.
 
 ### What it does not claim
 
@@ -119,20 +120,23 @@ MoveProof distinguishes between implemented, tested, and externally integrated f
 | Verified CSV export | Yes | **Verified locally and in CI** | `make test-db` |
 | Frontend-to-backend workflow | Yes | **Verified in production** | Walk the demo on the deployed app |
 | Live Nebius Token Factory inference | Yes | **Verified live** | `make smoke` |
+| External Evidence Check | Yes | **Verified in production** | Evidence tests plus a real deployed Tavily runtime check |
 | Production deployment | Yes | **Verified in production** | See [deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md) |
 
-Latest local verification:
+Current verification commands:
 
-- `make test-core`: **113 passed, 1 skipped, 0 failed**
-- `make test-db`: **106 passed, 0 failed**
-- `npm run typecheck`, `npm run lint`, `npm run build`: **all passing**
-- GitHub Actions: **frontend, backend with PostgreSQL, Rust verifier, and repository hygiene all passing**
+- `make test-core`
+- `make test-db`
+- `npm run typecheck`
+- `npm run lint`
+- `npm run build`
+- `make rust-test`
 
-The single skip in the core suite is the branch that only runs when the Rust binary is absent, and it skips because the binary is present.
+The production stack has passed its local, CI, and deployed workflow checks, including a real Tavily External Evidence Check.
 
 ### Production
 
-The stack is deployed and the full browser workflow has been exercised end to end against it.
+The core stack is deployed and the full browser workflow has been exercised end to end against it.
 
 | Layer | Where it runs |
 | --- | --- |
@@ -142,8 +146,11 @@ The stack is deployed and the full browser workflow has been exercised end to en
 | Private objects | Google Cloud Storage |
 | Canonical reconciliation | Rust verifier compiled into the backend container |
 | Inference | Nebius Token Factory, `nvidia/nemotron-3-super-120b-a12b` |
+| External evidence | Tavily External Evidence Check verified in production |
 
 The deployed `/health` endpoint reports PostgreSQL connected, Nebius configured, the Rust verifier available and PDF generation available. A real Token Factory request has succeeded against that model.
+
+External Evidence Check is production-verified. Migration `003_evidence_events.sql` is applied, the Tavily credential is supplied to Cloud Run through Secret Manager, the updated revision is deployed, and a real production request returned advisory Tavily sources successfully without exposing the credential.
 
 The exercised path was upload, approval, staging, verification failure, repair, rerun, verification pass, commit, evidence report. The controlled legacy profile damaged all four zero-padded identifiers, the verifier failed both identifier preservation and canonical row reconciliation, the repair reran from the stored original bytes rather than the damaged staged integer, and the rerun passed with nine checks passed, zero failed, zero review required and two advisory checks reported as not verified. Four rows were committed with none skipped under the fail-closed policy. JSON, HTML and PDF evidence and the verified CSV export were all produced from the deployed backend.
 
@@ -240,6 +247,21 @@ make smoke
 
 Independent of everything else. Run it the moment you have a credential rather than waiting for the rest of the stack. Without a key it exits with a clear message and code 2, and every other command still works.
 
+### Tavily External Evidence Check
+
+The core migration workflow does not require a Tavily credential. Without one, External Evidence Check disables itself while the rest of MoveProof continues to work.
+
+For local development, keep the credential on the backend only:
+
+```bash
+cd backend
+export TAVILY_API_KEY='your-key'
+```
+
+Never create `NEXT_PUBLIC_TAVILY_API_KEY`. Any variable with the `NEXT_PUBLIC_` prefix is bundled into browser-accessible code.
+
+A real production Tavily call should be verified only after the database migration, Secret Manager wiring, and updated Cloud Run revision are in place. See [deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md).
+
 ---
 
 ## Testing
@@ -272,7 +294,8 @@ pytest tests/test_reports.py -v      # PDF and HTML rendering
 | `test_canonical.py` | Canonicalisation rules, and parity between Python and Rust | Rust for parity |
 | `test_reports.py` | Real PDF bytes, page count, HTML escaping, three formats agreeing | reportlab |
 | `test_database.py` | Staging, idempotency, conflicts, the commit gate, rollback | PostgreSQL |
-| `test_api.py` | Every endpoint, the full workflow over HTTP, and the status taxonomy | PostgreSQL |
+| `test_api.py` | API workflow, status taxonomy, and integration boundaries | PostgreSQL |
+| `test_external_evidence.py` | Metadata-only query construction, provider handling, audit safety, and non-mutation guarantees | Nothing; provider calls are mocked |
 
 A test that needs something unavailable skips with a reason rather than passing quietly.
 
@@ -326,27 +349,33 @@ flowchart TB
         UI["Next.js on Vercel"]
     end
 
-    subgraph GCP["Google Cloud, hosting and storage only"]
+    subgraph GCP["Google Cloud, hosting and storage"]
         API["FastAPI on Cloud Run"]
         RUST["Rust verifier, a subprocess of the API"]
         GCS[("Cloud Storage")]
         DB[("PostgreSQL: moveproof, staging, public")]
     end
 
-    subgraph Nebius["Nebius, the only inference provider"]
+    subgraph Nebius["Nebius"]
         TF["Token Factory, NVIDIA model"]
     end
 
+    subgraph Tavily["Tavily"]
+        EXT["External public-reference search"]
+    end
+
     UI -->|REST| API
-    API -->|schema summary and 5 sampled rows| TF
-    TF -->|typed plan proposal| API
+    API -->|schema summary and up to 5 sampled rows| TF
+    TF -->|typed proposal or reasoning result| API
+    API -->|metadata-only evidence query| EXT
+    EXT -->|advisory sources| API
     API -->|reconciliation over stdin| RUST
     API -->|parameterised SQL| DB
     API -->|private objects| GCS
-    API -->|canonical evidence object| UI
+    API -->|workflow state and evidence| UI
 ```
 
-Google Cloud performs no inference. Vertex AI and Gemini are deliberately absent: routing model calls through them would put the project outside the hackathon rules regardless of output quality.
+Google Cloud performs no model inference. Vertex AI and Gemini are not part of the MoveProof inference path. Nebius Token Factory serves the NVIDIA model; Tavily has a separate, advisory role for external public-reference discovery.
 
 ### Trust boundary
 
@@ -355,12 +384,14 @@ flowchart LR
     subgraph Untrusted
         M["Model output"]
         F["Uploaded file"]
+        X["External evidence"]
     end
 
     subgraph Validation
         V["Allowlist validation"]
         A["Acknowledgement gate"]
         P["Safe parsing and limits"]
+        H["Human review"]
     end
 
     subgraph Trusted
@@ -372,15 +403,16 @@ flowchart LR
 
     M --> V
     F --> P
+    X --> H
     V --> A
     A -->|approved plan version| E
     P -->|typed rows or rejection| E
     E -->|staging| VER
     VER -->|stored checks| G
-    G -->|only when nothing is outstanding| DBW
+    G -->|only when nothing mandatory is outstanding| DBW
 ```
 
-No arrow reaches the executor without passing validation, and none reaches the destination without passing the commit gate.
+No model proposal reaches the executor without deterministic validation, and no staged data reaches the destination without passing the database-backed commit gate. External evidence terminates at human review; it has no path to execution, verification state, or commit authority.
 
 ### The commit gate
 
@@ -458,6 +490,10 @@ erDiagram
         text idempotency_key "unique per migration"
         timestamptz verified_at
     }
+    EVENTS {
+        text event_type "nullable for legacy rows"
+        jsonb metadata "structured advisory audit metadata"
+    }
     COMMITS {
         int expected_rows
         int written_rows
@@ -511,9 +547,11 @@ Moveproof/
 │   │   ├── migration/
 │   │   │   ├── SourceAndDestination.tsx    Wizard steps one and two
 │   │   │   ├── MappingAndReview.tsx        Wizard steps three and four
+│   │   │   ├── ExternalEvidencePanel.tsx   Advisory Tavily evidence during plan review
 │   │   │   ├── WizardActions.tsx
 │   │   │   ├── VerificationResults.tsx
 │   │   │   ├── RepairProposal.tsx
+│   │   │   ├── MigrationActions.tsx        Delete, and rollback before delete
 │   │   │   └── EvidenceReport.tsx
 │   │   ├── ui/
 │   │   │   ├── Button.tsx
@@ -547,7 +585,7 @@ Moveproof/
 │   ├── app/
 │   │   ├── config.py                       Settings, safe defaults, no secret defaults
 │   │   ├── api/
-│   │   │   └── main.py                     19 endpoints plus 2 aliases, deliberately thin
+│   │   │   └── main.py                     API routes and error mapping, deliberately thin
 │   │   ├── services/
 │   │   │   ├── pipeline.py                 Every workflow decision lives here
 │   │   │   └── evidence.py                 The canonical evidence object
@@ -568,16 +606,23 @@ Moveproof/
 │   │   │   └── db_verifier.py              Verification against rows read back
 │   │   ├── reports/
 │   │   │   ├── html.py                     Standalone document, every value escaped
-│   │   │   └── pdf.py                      Server side reportlab rendering
+│   │   │   ├── pdf.py                      Server side reportlab rendering
+│   │   │   └── csv_export.py               The verified transformed dataset
 │   │   ├── db/
 │   │   │   ├── connection.py               psycopg 3, autocommit off
 │   │   │   ├── migrations.py               Numbered migration runner
 │   │   │   └── repository.py               Persistence, commit gate, reconciliation
-│   │   └── nebius/
-│   │       └── client.py                   Token Factory, JSON only, never executes
+│   │   ├── nebius/
+│   │   │   └── client.py                   Token Factory, JSON only, never executes
+│   │   └── evidence/
+│   │       ├── __init__.py
+│   │       ├── query_builder.py            Metadata-only, allowlisted evidence queries
+│   │       ├── tavily.py                   Bounded Tavily client, backend credential only
+│   │       └── service.py                  Advisory orchestration and audit events
 │   ├── sql/
 │   │   ├── 001_schema.sql                  Control plane, staging, destination
-│   │   └── 002_batch3_integrity.sql        Source bytes, evidence, commit ledger
+│   │   ├── 002_batch3_integrity.sql        Source bytes, evidence, commit ledger
+│   │   └── 003_evidence_events.sql         Structured external-evidence audit metadata
 │   ├── scripts/
 │   │   ├── generate_fixtures.py            Deterministic synthetic datasets
 │   │   ├── nebius_smoke_test.py            Standalone credential check
@@ -590,7 +635,8 @@ Moveproof/
 │   │   ├── test_canonical.py               Canonicalisation rules and Rust parity
 │   │   ├── test_reports.py                 Real PDF bytes, HTML escaping
 │   │   ├── test_database.py                Staging, idempotency, commit, rollback
-│   │   ├── test_api.py                     Every endpoint and the status taxonomy
+│   │   ├── test_api.py                     API workflow and status taxonomy
+│   │   ├── test_external_evidence.py       Tavily boundary, safety and non-mutation tests
 │   │   └── fixtures/
 │   │       ├── clean.csv                   The nine hand written hazard fixtures
 │   │       ├── ambiguous_date.csv
@@ -623,6 +669,7 @@ Moveproof/
 │
 ├── deploy/
 │   ├── DEPLOYMENT.md                       Vercel, Cloud Run, Cloud SQL, costs
+│   ├── cloudbuild.yaml                     Reproducible backend image build
 │   ├── cloudrun.yaml                       Secrets referenced, never inlined
 │   └── storage-lifecycle.json
 │
@@ -645,7 +692,7 @@ Moveproof/
 │   ├── extensions.json
 │   └── settings.json
 │
-├── .env.local.example                      Frontend variables, none of them secret
+├── .env.local.example                      Frontend config plus backend-only secret guidance
 ├── .dockerignore
 ├── .eslintrc.json
 ├── .gitignore
@@ -668,11 +715,11 @@ Moveproof/
 
 ## The API
 
-Nineteen primary endpoints, plus two compatibility aliases for the report routes.
+The public API exposes the migration workflow, evidence exports, and advisory External Evidence Check routes.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/health` | Database, Nebius, Rust and PDF availability, reported separately |
+| GET | `/health` | Database, Nebius, Rust, report generation, and External Evidence availability |
 | GET | `/api/schema/destination` | The destination schema and the contract hash |
 | POST | `/api/migrations` | Upload a CSV or XLSX file |
 | GET | `/api/migrations` | Index with plan and run state folded in |
@@ -680,7 +727,7 @@ Nineteen primary endpoints, plus two compatibility aliases for the report routes
 | GET | `/api/migrations/{id}` | One migration and its plan versions |
 | GET | `/api/migrations/{id}/preview` | Real source rows |
 | GET | `/api/migrations/{id}/events` | Audit events |
-| DELETE | `/api/migrations/{id}` | Delete a migration and everything derived from it |
+| DELETE | `/api/migrations/{id}` | Delete an uncommitted or rolled-back migration; committed migrations must be rolled back first |
 | POST | `/api/migrations/{id}/plan/propose?profile=` | Propose a mapping: `safe`, `legacy` or `model` |
 | POST | `/api/migrations/{id}/plan/approve` | Approve with acknowledgements recorded by column |
 | POST | `/api/migrations/{id}/run` | Stage, honouring an `Idempotency-Key` header |
@@ -693,6 +740,9 @@ Nineteen primary endpoints, plus two compatibility aliases for the report routes
 | GET | `/api/migrations/{id}/report/html` | The same object as a standalone HTML document |
 | GET | `/api/migrations/{id}/report/pdf` | The same object as a PDF |
 | GET | `/api/migrations/{id}/export/csv` | The verified transformed dataset as CSV |
+| GET | `/api/evidence/questions` | The fixed set of questions a reviewer may ask |
+| POST | `/api/migrations/{id}/external-evidence` | Advisory external context for one ambiguous field |
+| GET | `/api/migrations/{id}/external-evidence` | Past evidence checks for this migration |
 
 The two aliases, `/api/migrations/{id}/report.html` and `/api/migrations/{id}/report.pdf`, were the canonical paths for one release and remain registered so existing links keep working. Both are covered by tests.
 
@@ -706,7 +756,9 @@ Four answers that must never be confused with one another.
 | 404 | The record does not exist | `not_found` |
 | 409 | The record exists but the workflow is not in that state | `workflow`, `commit_gate`, `integrity` |
 | 422 | The request content could not be processed | `parse` |
+| 502 | An external provider did not answer; the review is unchanged | `evidence_unavailable` |
 | 503 | The authoritative source is unreachable | `source` |
+| 503 | No external provider credential is configured | `evidence_unavailable` |
 | 500 | A bug in this application, never disguised as any of the above | none |
 
 Only `repository.NotFound` maps to 404. The builtin `LookupError` is deliberately not handled, because `KeyError` and `IndexError` inherit from it: a blanket handler once turned an internal serialisation fault into a missing record report, which made a real bug look like a dead route for an entire release. A regression test asserts that a `KeyError` propagates as a failure rather than a 404.
@@ -730,7 +782,7 @@ Only `NEXT_PUBLIC_` values reach the browser, and none of them is a secret.
 
 ### Backend
 
-| Variable | Purpose | Default |
+| Variable | Purpose | Default / production value |
 | --- | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection | local on port 5433 |
 | `MAX_UPLOAD_BYTES` | Upload ceiling | 26214400, 25 MB |
@@ -738,11 +790,17 @@ Only `NEXT_PUBLIC_` values reach the browser, and none of them is a secret.
 | `MODEL_SAMPLE_ROWS` | Rows sent to the model, ever | 5 |
 | `CORS_ORIGINS` | Comma-separated allowed origins | localhost:3000 |
 | `NEBIUS_API_KEY` | Token Factory credential | none, fails loudly |
-| `NEBIUS_BASE_URL` | Token Factory endpoint | confirm against the current Token Factory console |
-| `NEBIUS_MODEL_ID` | Confirm with the smoke test, do not guess | none |
+| `NEBIUS_BASE_URL` | Token Factory endpoint | `https://api.tokenfactory.nebius.com/v1` |
+| `NEBIUS_MODEL_ID` | NVIDIA model identifier | production: `nvidia/nemotron-3-super-120b-a12b` |
 | `MOVEPROOF_VERIFIER_BIN` | Override the Rust binary path | auto-detected |
+| `TAVILY_API_KEY` | External Evidence Check credential, backend only | none, the feature disables itself |
+| `TAVILY_BASE_URL` | Provider endpoint | `https://api.tavily.com` |
+| `TAVILY_TIMEOUT_SECONDS` | Provider request timeout | 20 |
+| `TAVILY_MAX_RESULTS` | Sources returned per check | 5 |
+| `TAVILY_MAX_QUERY_CHARS` | Ceiling on the outgoing query | 400 |
+| `TAVILY_MAX_EXCERPT_CHARS` | Ceiling on each excerpt reaching the browser | 600 |
 
-The Nebius key carries no `NEXT_PUBLIC_` prefix and never will. Put it in your shell or in Secret Manager, not in a file the frontend can read.
+Neither the Nebius key nor the Tavily key carries a `NEXT_PUBLIC_` prefix, and neither ever will. `NEXT_PUBLIC_TAVILY_API_KEY` in particular would put a billable credential in every visitor's browser. Put it in your shell or in Secret Manager, not in a file the frontend can read.
 
 ---
 
@@ -800,7 +858,59 @@ The PDF is generated server side with reportlab: A4, repeated table headers so a
 
 JSON, HTML and PDF describe what happened to the data. `GET /api/migrations/{id}/export/csv` returns the data itself: the transformed rows exactly as they passed verification, read from storage rather than assembled in the browser.
 
-It is available once a run is verified with nothing mandatory outstanding, and remains available after commit. A failed or unverified run is refused with a workflow error rather than exported under a filename that says verified. Identifiers are written as text, so `00127` stays `00127`.
+It is available when the migration reaches `ready_to_commit` and remains available after it reaches `committed`. Failed or unverified runs are refused with a workflow error rather than exported under a filename that says verified. Identifiers are written as text, so `00127` stays `00127`.
+
+---
+
+## External Evidence Check
+
+MoveProof answers two different questions, and keeping them apart is the point.
+
+The deterministic verifier answers: **did the approved migration contract hold?** It answers from the data, and nothing in this feature can change that answer.
+
+External Evidence Check answers a narrower question: **what external context might help a reviewer decide what the contract should be when the dataset alone cannot say?** A value such as `00127` shows that the file contains a zero-padded identifier, but the file alone may not establish whether that zero is semantically significant. Published documentation for the source system may provide useful context, and that context should be visible to the person making the decision.
+
+So the feature retrieves published references through the Tavily API and shows them next to the mapping under review. It never becomes a verifier.
+
+### Where it appears
+
+Inside the existing plan review step, beside the mappings the validator flagged as review required. It is not a separate page and not a search tool. The question it answers is only meaningful next to the decision it informs.
+
+The reviewer picks a question from a fixed list, sees what left the system, reads the sources, and then makes the same decision they would have made anyway: keep the mapping, revise it, reject it, or resolve the ambiguity by hand. There is no control that applies a result.
+
+### What leaves the system
+
+Only validated schema and review metadata needed for the question is sent to Tavily, such as source and destination column names, type context, the proposed operation, and a question selected from an allowlisted set. The query is composed server side. `app/evidence/query_builder.py` does not accept arbitrary reviewer free text.
+
+The builder rejects suspicious or overlong metadata and any question outside the allowlist. Tests inspect the outgoing request body and assert that fixture row values do not appear in it.
+
+Uploaded files, full datasets, sampled rows, raw cell values, and intentionally supplied personal values are not sent to Tavily.
+
+### What it cannot do
+
+Running a check cannot modify source data, staged rows or an approved plan; create or approve a plan; resolve a review item; turn Failed or Not verified into Passed; satisfy a mandatory check; bypass the commit gate; commit or roll back rows; or execute SQL, shell commands or code.
+
+The evidence module has no mutation path into execution, verification, approval, or commit logic. Tests assert that verification results, migration state, and commit eligibility remain unchanged by an External Evidence Check.
+
+### How results are labelled
+
+Every result is marked **Advisory** and carries a notice saying the references have not been verified by MoveProof and the decision remains the reviewer's. The panel uses no green, no tick and no passed styling: that vocabulary belongs to the verifier, and borrowing it would suggest something had been confirmed.
+
+Not every search result is authoritative, so each source shows its title, domain, excerpt and a link to the original. The reviewer judges source quality; the product does not do it for them.
+
+### Failure behaviour
+
+A missing credential disables the action with a written reason rather than failing when clicked. A timeout or upstream error returns 502 with a retry, and states plainly that the review is unchanged. An empty result set is reported as no results found, with the note that this is not evidence the mapping is correct.
+
+The migration workflow continues normally throughout. A test commits a migration end to end while the provider is unreachable.
+
+### Auditability
+
+Each completed check appends an `external_evidence_checked` audit event with structured metadata such as field context, the selected question, the sanitised query, provider information, returned source titles and URLs, result count, and timestamp.
+
+Migration `003_evidence_events.sql` adds nullable `event_type` and `metadata JSONB` columns to the existing `moveproof.events` table rather than introducing a separate evidence table. Existing event rows remain valid, and other event types do not have to populate the new fields.
+
+The credential, uploaded rows, personal values, full data records and request headers are never recorded. The metadata is assembled field by field rather than dumped, so a future addition to the provider response cannot start leaking into the audit trail by default.
 
 ---
 
@@ -821,7 +931,10 @@ It is available once a run is verified with nothing mandatory outstanding, and r
 | Transactional commit with a fail-closed conflict policy | Implemented and tested |
 | Idempotent retries | Implemented and tested |
 | Audit logging without field values | Implemented |
-| Private object storage with lifecycle deletion | Configured, not deployed |
+| External search restricted to validated schema and review metadata | Implemented and tested |
+| Provider credential never in a response, event or error | Implemented and tested |
+| Non-http provider URLs never rendered as links | Implemented and tested |
+| Private object storage | Deployed on Google Cloud Storage |
 
 Distinguishing implemented from tested is deliberate. A product about verifiable claims should not make unverifiable ones about itself.
 
@@ -831,13 +944,15 @@ Please follow the private reporting instructions in `SECURITY.md`. Do not includ
 
 ## Deployment
 
-Full instructions, including cost controls and a six-point verification checklist, are in [deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md).
+Full instructions, including cost controls and the production verification checklist, are in [deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md).
 
-The deployed architecture: frontend on Vercel, backend on Cloud Run from a two-stage image that compiles and tests the Rust verifier, PostgreSQL on Cloud SQL, files in a private Cloud Storage bucket with 90-day lifecycle deletion, and inference on Nebius Token Factory.
+The verified core deployment uses Vercel for the frontend, Cloud Run for the FastAPI backend and Rust verifier, Cloud SQL for PostgreSQL, private Google Cloud Storage, and Nebius Token Factory for NVIDIA model inference.
 
-The Nebius credential lives in Secret Manager and is read by Cloud Run. It is never placed in a Vercel environment variable, never carries a `NEXT_PUBLIC_` prefix, and never reaches browser code.
+The Nebius credential lives in Secret Manager and is read by Cloud Run. The Tavily credential must follow the same backend-only boundary when External Evidence Check is enabled. Neither credential belongs in Vercel or in a `NEXT_PUBLIC_*` variable.
 
-Two notes worth repeating. A Google Cloud budget alert is a notification, not a spending cap; the controls that actually bound spend are `maxScale` on Cloud Run and stopping the SQL instance between demonstrations. And no GPU is provisioned anywhere, because Token Factory serves the model.
+External Evidence Check is production-verified: migration `003_evidence_events.sql` is applied, `tavily-api-key` is supplied through Secret Manager, the updated Cloud Run revision is deployed, and a real production request returned Tavily sources successfully.
+
+A Google Cloud budget alert is a notification, not a spending cap. No GPU is provisioned in the Google Cloud deployment because Nebius Token Factory serves the NVIDIA model.
 
 ---
 
@@ -878,7 +993,7 @@ It navigates and it changes the theme. It cannot approve a plan, run a verificat
 - [x] Hardened approval bound to a contract hash, with recorded acknowledgements
 - [x] PostgreSQL staging, idempotent runs, fail-closed commit gate, rollback
 - [x] Original source bytes preserved with integrity checks
-- [x] FastAPI with 19 primary endpoints, 2 compatibility aliases, and a canonical evidence object
+- [x] FastAPI workflow API, compatibility report aliases, and a canonical evidence object
 - [x] Workspace fully wired to the backend; the public landing page uses a clearly labeled synthetic preview
 - [x] Rust verifier with a real pipeline role and parity tests
 - [x] HTML, JSON and PDF reports from one object
@@ -888,9 +1003,14 @@ It navigates and it changes the theme. It cannot approve a plan, run a verificat
 - [x] Database and API suites passing against real PostgreSQL, locally and in CI
 - [x] Verified CSV export of the transformed dataset
 - [x] Delete and rollback available from the interface
-- [x] Production stack deployed on Vercel, Cloud Run, Cloud SQL and Nebius
+- [x] Core production stack deployed on Vercel, Cloud Run, Cloud SQL and Nebius
 - [x] Live Nebius Token Factory inference against `nvidia/nemotron-3-super-120b-a12b`
 - [x] Full production browser workflow exercised end to end
+- [x] External Evidence Check, metadata-only advisory context from Tavily inside plan review
+
+### Production verification
+
+- [x] Migration `003_evidence_events.sql` applied, Tavily secret configured, updated backend deployed, and a real production Tavily runtime call confirmed
 
 ### Considered and deliberately deferred
 
@@ -903,7 +1023,7 @@ It navigates and it changes the theme. It cannot approve a plan, run a verificat
 
 MIT. See [LICENSE](LICENSE). Copyright 2026 Wiqi Lee.
 
-Nebius and NVIDIA are named throughout to describe the technology in use. Neither company endorses this project. It is an independent hackathon entry.
+Nebius, NVIDIA, and Tavily are named throughout to describe technologies used by MoveProof. No endorsement is implied. This is an independent hackathon entry.
 
 ---
 

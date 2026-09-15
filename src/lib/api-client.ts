@@ -11,6 +11,9 @@
 
 import type {
   ApiApprovalResult,
+  ApiEvidenceQuestion,
+  ApiEvidenceRequest,
+  ApiExternalEvidence,
   ApiCommitResult,
   ApiDestinationSchema,
   ApiEvent,
@@ -31,6 +34,7 @@ export const API_BASE_URL =
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 export type ErrorKind =
+  | "evidence_unavailable"
   | "workflow"
   | "commit_gate"
   | "parse"
@@ -115,6 +119,72 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   return payload as T;
+}
+
+export interface CsvExport {
+  blob: Blob;
+  filename: string;
+  runId: string | null;
+  planVersion: string | null;
+  rowCount: number | null;
+  committed: boolean;
+}
+
+/**
+ * Fetch a file as a blob rather than navigating to it.
+ *
+ * A plain link to the export would take a failed request and render the JSON
+ * error where the report used to be. Fetching means an error stays an error
+ * the page can display, and the download only starts once the bytes arrived.
+ */
+async function requestFile(path: string, timeoutMs = 60_000): Promise<CsvExport> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, { signal: controller.signal });
+  } catch (error) {
+    clearTimeout(timer);
+    const aborted = error instanceof DOMException && error.name === "AbortError";
+    throw new ApiError(
+      aborted
+        ? `The download from ${path} timed out. Nothing has changed and you can retry.`
+        : `Could not reach the backend at ${API_BASE_URL}. Is it running?`,
+      0,
+      "network"
+    );
+  }
+  clearTimeout(timer);
+
+  if (!response.ok) {
+    // The backend sends JSON for every error, including on a file route.
+    const text = await response.text();
+    let record: { detail?: string; kind?: ErrorKind } = {};
+    try {
+      record = JSON.parse(text);
+    } catch {
+      record = { detail: text };
+    }
+    throw new ApiError(
+      record.detail ?? `Request failed with status ${response.status}`,
+      response.status,
+      record.kind ?? "unknown"
+    );
+  }
+
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  const rowCount = response.headers.get("X-MoveProof-Row-Count");
+
+  return {
+    blob: await response.blob(),
+    filename: match ? match[1] : "moveproof-verified.csv",
+    runId: response.headers.get("X-MoveProof-Run-Id"),
+    planVersion: response.headers.get("X-MoveProof-Plan-Version"),
+    rowCount: rowCount === null ? null : Number(rowCount),
+    committed: response.headers.get("X-MoveProof-Committed") === "true",
+  };
 }
 
 export const api = {
@@ -229,6 +299,32 @@ export const api = {
       `/api/migrations/${id}/rollback`,
       { method: "POST" }
     ),
+
+  /**
+   * The verified transformed dataset. Distinct from the evidence exports:
+   * this is the data, those describe what happened to it.
+   */
+  exportVerifiedCsv: (id: string) =>
+    requestFile(`/api/migrations/${id}/export/csv`),
+
+  evidenceQuestions: () =>
+    request<{ questions: ApiEvidenceQuestion[]; provider: string }>(
+      "/api/evidence/questions"
+    ),
+
+  /**
+   * Fetch advisory external context for one ambiguous field.
+   *
+   * A longer window than a normal call, because it waits on a third party.
+   * Failure here never affects the migration: the caller shows the error and
+   * the review continues.
+   */
+  externalEvidence: (id: string, body: ApiEvidenceRequest) =>
+    request<ApiExternalEvidence>(`/api/migrations/${id}/external-evidence`, {
+      method: "POST",
+      body,
+      timeoutMs: 45_000,
+    }),
 
   evidence: (id: string, runId?: string) =>
     request<ApiEvidence>(

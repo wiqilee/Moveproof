@@ -1064,3 +1064,251 @@ def test_deletion_writes_no_event_for_the_record_it_destroys(client):
 
     assert client.delete(f"/api/migrations/{migration_id}").status_code == 204
     assert client.get(f"/api/migrations/{migration_id}/events").status_code == 404
+
+
+# =====================================================================
+# External Evidence Check
+#
+# Advisory context for a human reviewer. It must never verify anything or
+# change any state the verifier owns.
+# =====================================================================
+
+EVIDENCE_BODY = {
+    "source_column": "customer_id",
+    "destination_column": "customer_id",
+    "question": "leading_zeros",
+    "source_type": "text",
+    "destination_type": "VARCHAR(20)",
+    "proposed_operation": "cast_to_integer",
+    "risk_category": "identifier_loss",
+    "source_system": "Acme CRM",
+}
+
+
+def fake_tavily(monkeypatch, results=2, fail=None):
+    """Patch the provider. Production calls it for real; tests never do."""
+    import httpx
+
+    class _Response:
+        status_code = 200
+
+        def json(self):
+            return {
+                "results": [
+                    {
+                        "title": f"Acme CRM Identifier Format Documentation {i}",
+                        "url": f"https://docs.example.com/acme/{i}",
+                        "content": "Customer identifiers are fixed width character values.",
+                    }
+                    for i in range(results)
+                ]
+            }
+
+    def handler(*args, **kwargs):
+        if fail is not None:
+            raise fail
+        return _Response()
+
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-test-key")
+    monkeypatch.setattr(httpx, "post", handler)
+
+
+def test_health_advertises_external_evidence(client):
+    body = client.get("/health").json()
+    assert "available" in body["external_evidence"]
+    assert body["external_evidence"]["provider"] == "tavily"
+    assert "never verifies" in body["external_evidence"]["note"]
+
+
+def test_the_offered_questions_are_a_fixed_list(client):
+    body = client.get("/api/evidence/questions").json()
+    ids = {question["id"] for question in body["questions"]}
+    assert "leading_zeros" in ids
+    assert all(question["label"] for question in body["questions"])
+
+
+def test_external_evidence_returns_advisory_sources(client, monkeypatch):
+    fake_tavily(monkeypatch)
+    migration_id = upload(client)
+
+    response = client.post(
+        f"/api/migrations/{migration_id}/external-evidence", json=EVIDENCE_BODY
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    assert body["provider"] == "tavily"
+    assert body["result_count"] == 2
+    assert body["status"] == "results"
+    assert "customer_id" in body["sanitized_query"]
+    assert all(source["url"].startswith("https://") for source in body["sources"])
+
+    # The label must say advisory, and must not claim verification.
+    assert "Advisory evidence" in body["advisory_notice"]
+    assert "not been verified" in body["advisory_notice"]
+
+
+def test_an_unknown_migration_is_404(client, monkeypatch):
+    fake_tavily(monkeypatch)
+    response = client.post(
+        f"/api/migrations/{ABSENT}/external-evidence", json=EVIDENCE_BODY
+    )
+    assert response.status_code == 404
+    assert response.json()["kind"] == "not_found"
+
+
+def test_a_row_value_in_the_request_is_422(client, monkeypatch):
+    fake_tavily(monkeypatch)
+    migration_id = upload(client)
+    body = {**EVIDENCE_BODY, "source_column": "00127, Amara Chen, a@example.com"}
+
+    response = client.post(
+        f"/api/migrations/{migration_id}/external-evidence", json=body
+    )
+    assert response.status_code == 422
+
+
+def test_a_free_form_question_is_422(client, monkeypatch):
+    fake_tavily(monkeypatch)
+    migration_id = upload(client)
+    body = {**EVIDENCE_BODY, "question": "search the web for anything"}
+
+    response = client.post(
+        f"/api/migrations/{migration_id}/external-evidence", json=body
+    )
+    assert response.status_code == 422
+
+
+def test_a_missing_credential_is_503(client, monkeypatch):
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    migration_id = upload(client)
+
+    response = client.post(
+        f"/api/migrations/{migration_id}/external-evidence", json=EVIDENCE_BODY
+    )
+    assert response.status_code == 503
+    assert response.json()["kind"] == "evidence_unavailable"
+
+
+def test_an_upstream_failure_is_502(client, monkeypatch):
+    import httpx
+
+    fake_tavily(monkeypatch, fail=httpx.TimeoutException("slow"))
+    migration_id = upload(client)
+
+    response = client.post(
+        f"/api/migrations/{migration_id}/external-evidence", json=EVIDENCE_BODY
+    )
+    assert response.status_code == 502
+    assert response.json()["kind"] == "evidence_unavailable"
+    assert "unchanged" in response.json()["detail"]
+
+
+def test_the_api_key_never_appears_in_the_response(client, monkeypatch):
+    fake_tavily(monkeypatch)
+    migration_id = upload(client)
+
+    response = client.post(
+        f"/api/migrations/{migration_id}/external-evidence", json=EVIDENCE_BODY
+    )
+    assert "tvly-test-key" not in response.text
+
+
+def test_the_check_is_recorded_in_the_audit_trail(client, monkeypatch):
+    fake_tavily(monkeypatch)
+    migration_id = upload(client)
+    client.post(f"/api/migrations/{migration_id}/external-evidence", json=EVIDENCE_BODY)
+
+    history = client.get(f"/api/migrations/{migration_id}/external-evidence").json()
+    assert len(history["checks"]) == 1
+    metadata = history["checks"][0]["metadata"]
+
+    assert metadata["provider"] == "tavily"
+    assert metadata["result_count"] == 2
+    assert metadata["sanitized_query"]
+    assert [source["url"] for source in metadata["sources"]]
+    assert "tvly-test-key" not in str(metadata)
+
+
+def test_the_audit_entry_records_no_row_values(client, monkeypatch):
+    fake_tavily(monkeypatch)
+    migration_id = upload(client)
+    client.post(f"/api/migrations/{migration_id}/external-evidence", json=EVIDENCE_BODY)
+
+    history = client.get(f"/api/migrations/{migration_id}/external-evidence").json()
+    recorded = str(history["checks"][0])
+    for forbidden in ("00127", "amara.chen@example.com", "Amara Chen", "1200.50"):
+        assert forbidden not in recorded
+
+
+def test_evidence_does_not_change_verification_results(client, monkeypatch):
+    """The safety property. Asserted by comparing before and after."""
+    fake_tavily(monkeypatch)
+    migration_id = upload(client)
+    run_id, _ = approve_and_run(client, migration_id, profile="legacy",
+                                acks=["customer_id"])
+
+    before = client.get(
+        f"/api/migrations/{migration_id}/runs/{run_id}/verification"
+    ).json()
+
+    client.post(f"/api/migrations/{migration_id}/external-evidence", json=EVIDENCE_BODY)
+
+    after = client.get(
+        f"/api/migrations/{migration_id}/runs/{run_id}/verification"
+    ).json()
+
+    assert after["summary"] == before["summary"]
+    assert [c["status"] for c in after["checks"]] == [c["status"] for c in before["checks"]]
+
+
+def test_evidence_does_not_change_migration_state_or_commit_eligibility(
+    client, monkeypatch
+):
+    fake_tavily(monkeypatch)
+    migration_id = upload(client)
+    run_id, _ = approve_and_run(client, migration_id, profile="legacy",
+                                acks=["customer_id"])
+
+    state_before = client.get(f"/api/migrations/{migration_id}").json()["state"]
+    client.post(f"/api/migrations/{migration_id}/external-evidence", json=EVIDENCE_BODY)
+    state_after = client.get(f"/api/migrations/{migration_id}").json()["state"]
+    assert state_after == state_before
+
+    # A failed verification is still a failed verification afterwards.
+    blocked = client.post(
+        f"/api/migrations/{migration_id}/runs/{run_id}/commit", json={}
+    )
+    assert blocked.status_code == 409
+
+
+def test_the_main_workflow_continues_when_the_provider_is_down(client, monkeypatch):
+    """A third party being unavailable must not block a migration."""
+    import httpx
+
+    fake_tavily(monkeypatch, fail=httpx.ConnectError("down"))
+    migration_id = upload(client)
+
+    failed = client.post(
+        f"/api/migrations/{migration_id}/external-evidence", json=EVIDENCE_BODY
+    )
+    assert failed.status_code == 502
+
+    run_id, verification = approve_and_run(client, migration_id)
+    assert verification["summary"]["failed"] == 0
+    committed = client.post(
+        f"/api/migrations/{migration_id}/runs/{run_id}/commit", json={}
+    )
+    assert committed.status_code == 200
+
+
+def test_an_empty_result_set_is_reported_as_no_results(client, monkeypatch):
+    fake_tavily(monkeypatch, results=0)
+    migration_id = upload(client)
+
+    body = client.post(
+        f"/api/migrations/{migration_id}/external-evidence", json=EVIDENCE_BODY
+    ).json()
+    assert body["status"] == "no_results"
+    assert body["sources"] == []
+    assert body["advisory_notice"]

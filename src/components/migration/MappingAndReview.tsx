@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { Stepper } from "@/components/ui/Stepper";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { WizardActions } from "./WizardActions";
+import { ExternalEvidencePanel } from "./ExternalEvidencePanel";
+import type { ApiPlanMapping } from "@/lib/api-types";
 import { StepIntro, WIZARD_STEPS } from "./SourceAndDestination";
 import { toUiMapping } from "@/data/api";
 import { mappingStatusPresentation } from "@/domain/status";
@@ -39,7 +41,8 @@ export function MappingStep({
   onBack: () => void;
   backLabel: string;
 }) {
-  const { proposal, proposePlan, approvePlan, busy, health } = useMigration();
+  const { proposal, proposePlan, approvePlan, busy, health, migrationId } =
+    useMigration();
   const [profile, setProfile] = useState<Profile>("safe");
   const [acknowledged, setAcknowledged] = useState<string[]>([]);
 
@@ -185,6 +188,40 @@ export function MappingStep({
                     </li>
                   ))}
               </ul>
+            </div>
+          )}
+
+          {/* Evidence sits beside the mappings that were actually flagged,
+              inside the existing review step, rather than on a page of its
+              own. The question it answers is only meaningful next to the
+              decision it informs. */}
+          {needed.length > 0 && migrationId && (
+            <div className="mt-4 space-y-4">
+              {needed.map((column) => {
+                const mapping = proposal?.plan.mappings.find(
+                  (entry: ApiPlanMapping) => entry.source_column === column
+                );
+                if (!mapping) return null;
+                return (
+                  <ExternalEvidencePanel
+                    key={`evidence-${column}`}
+                    migrationId={migrationId}
+                    available={health?.external_evidence.available ?? false}
+                    defaultQuestion={
+                      mapping.operation === "parse_date"
+                        ? "date_format"
+                        : "leading_zeros"
+                    }
+                    context={{
+                      source_column: mapping.source_column,
+                      destination_column:
+                        mapping.destination_column ?? mapping.source_column,
+                      proposed_operation: mapping.operation,
+                      risk_category: "review_required",
+                    }}
+                  />
+                );
+              })}
             </div>
           )}
 

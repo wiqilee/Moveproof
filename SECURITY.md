@@ -18,11 +18,16 @@ MoveProof is a full-stack data migration application composed of:
 - a FastAPI backend;
 - PostgreSQL;
 - a Rust verification component;
-- Nebius Token Factory for model inference.
+- Nebius Token Factory for NVIDIA model inference;
+- an optional Tavily integration for External Evidence Check.
 
-The production deployment uses all of these components.
+The current production MoveProof core uses the frontend, backend, PostgreSQL, Rust verifier, and Nebius Token Factory.
 
-Local development can run without live model credentials, and the Rust verifier may also be unavailable in some local environments. When the Rust verifier is unavailable, canonical reconciliation is reported as `not verified`; it is never reported as passed.
+External Evidence Check is part of the active production path only after its database migration, backend configuration, Secret Manager credential, and deployed Tavily runtime call have been verified. The current production deployment has completed those checks.
+
+Local development can run without live model or external-evidence credentials.
+
+The Rust verifier may also be unavailable in some local environments. When the Rust verifier is unavailable, canonical reconciliation is reported as `not verified`; it is never reported as passed.
 
 MoveProof processes uploaded spreadsheets that may contain sensitive information. Depending on the workflow, the system stores or processes:
 
@@ -47,7 +52,7 @@ The application validates file type, file size, structure, and parsing behavior 
 
 Spreadsheet formulas are never evaluated by MoveProof.
 
-Formula-like values are preserved as uploaded data and are escaped or neutralized only when required by an output format.
+Formula-like values are preserved as uploaded data and are escaped or neutralized when required by an output format that could otherwise interpret them.
 
 ### Model output is untrusted
 
@@ -81,18 +86,27 @@ Backend secrets are never exposed through `NEXT_PUBLIC_*` variables.
 Production credentials such as:
 
 - `NEBIUS_API_KEY`;
+- `TAVILY_API_KEY`;
 - database credentials;
 - cloud credentials;
 
 remain on trusted backend infrastructure.
 
-The Nebius API key is stored server-side and is never included in frontend bundles.
+Provider credentials are never included in frontend bundles, normal API responses, audit events, or intentionally logged application output.
+
+### Provider errors are sanitized
+
+Errors returned by external providers are not blindly passed through to clients.
+
+Provider exception text can contain request context or implementation details, so MoveProof converts upstream failures into controlled application errors before returning them through the public API.
+
+Credentials must never be returned as part of an error message.
 
 ### Database access is constrained
 
 Database access uses parameterized SQL and least-privilege credentials.
 
-Workflow state, verification results, commit records, and destination writes are enforced server-side.
+Workflow state, verification results, commit records, rollback state, and destination writes are enforced server-side.
 
 A client-side control cannot bypass the database-backed commit gate.
 
@@ -107,11 +121,53 @@ The model receives only the information needed for its reasoning task, including
 
 The current default sample limit is controlled by `MODEL_SAMPLE_ROWS` and is set to five rows in the production configuration.
 
-Field values are not written into model audit logs.
+Field values are not intentionally written into model audit logs.
+
+### External Evidence Check is metadata-only
+
+External Evidence Check has a narrower data boundary than model-assisted planning.
+
+MoveProof does not send uploaded files, full datasets, sampled rows, or raw spreadsheet values to Tavily.
+
+The server constructs the request from approved metadata needed to investigate a semantic question, such as:
+
+- a source column name;
+- a destination column name;
+- declared or inferred type information;
+- the proposed operation;
+- a question selected from an allowlisted set.
+
+The query is composed server-side.
+
+The External Evidence query boundary does not accept arbitrary reviewer free text.
+
+This design reduces the risk that names, email addresses, identifiers, row values, or other uploaded content are accidentally sent to the external evidence provider.
+
+### External evidence is advisory
+
+Tavily results are advisory evidence for human review.
+
+External Evidence Check cannot:
+
+- modify source data;
+- modify staged data;
+- rewrite an approved plan;
+- approve a plan;
+- change a verification result;
+- change migration state;
+- change commit eligibility;
+- bypass a verification gate;
+- write destination rows.
+
+A source returned by Tavily is not automatically treated as authoritative merely because it was retrieved successfully.
+
+The interface preserves source identity and URLs so the reviewer can judge the evidence.
 
 ### Audit logs avoid sensitive field values
 
 Audit events record workflow actions, identifiers, plan versions, outcomes, and relevant metadata without intentionally logging uploaded field values.
+
+External Evidence Check audit metadata records the review action and safe structural metadata rather than uploaded row contents.
 
 This provides operational traceability while reducing unnecessary data exposure.
 
@@ -136,6 +192,8 @@ MoveProof distinguishes four verification outcomes:
 
 `Not verified` never means `passed`.
 
+External evidence does not alter any of these outcomes.
+
 ### Commit fails closed
 
 A migration cannot be committed merely because execution completed.
@@ -145,6 +203,8 @@ The commit gate evaluates stored workflow and verification records before destin
 If mandatory checks fail, remain unresolved, are missing, or no longer correspond to the approved execution contract, commit is refused.
 
 Destination conflicts also fail closed.
+
+External evidence cannot override the commit gate.
 
 ### Rollback is explicit
 
@@ -166,7 +226,9 @@ Repair does not attempt to reconstruct destroyed information from damaged transf
 
 When a revised plan is executed, MoveProof reparses the stored original upload.
 
-For example, if an integer conversion changes `00127` to `127`, the repair workflow does not attempt to infer the missing zero from `127`. It reruns the corrected plan against the original source bytes.
+For example, if an integer conversion changes `00127` to `127`, the repair workflow does not attempt to infer the missing zero from `127`.
+
+It reruns the corrected plan against the original source bytes.
 
 ## Production Boundaries
 
@@ -177,20 +239,50 @@ The deployed architecture separates responsibilities as follows:
 - Google Cloud SQL hosts PostgreSQL.
 - Google Cloud Storage provides private object storage.
 - The Rust verifier runs with the backend.
-- Nebius Token Factory provides model inference.
-- The production model is `nvidia/nemotron-3-super-120b-a12b`.
+- Nebius Token Factory provides NVIDIA model inference.
+- Tavily provides external public-reference discovery when External Evidence Check is enabled.
+
+The production NVIDIA model is:
+
+`nvidia/nemotron-3-super-120b-a12b`
 
 Google Cloud does not provide model inference for MoveProof.
 
 Vertex AI and Gemini are not part of the production inference path.
 
+Nebius and Tavily have different trust boundaries.
+
+Nebius assists with mapping and reasoning over a deliberately limited sample.
+
+Tavily receives metadata-only External Evidence queries.
+
+Neither provider can directly execute transformations, determine deterministic verification outcomes, or authorize a commit.
+
 ## Data Handling
 
-Do not upload production data unless the deployment operator has reviewed the environment, retention policy, access controls, and legal requirements applicable to that data.
+Do not upload production data unless the deployment operator has reviewed the environment, retention policy, access controls, third-party data boundaries, and legal requirements applicable to that data.
 
 The public hackathon deployment should be treated as a demonstration environment unless explicitly operated under a separate production data policy.
 
 Synthetic fixtures are the recommended data source for demonstrations and public testing.
+
+## Third-Party Data Boundaries
+
+MoveProof uses external services for narrowly defined purposes.
+
+### Nebius Token Factory
+
+Nebius receives model-assistance requests containing schema information and a limited sample of source rows.
+
+It does not receive the full uploaded dataset.
+
+### Tavily
+
+When External Evidence Check is enabled, Tavily receives only the server-generated metadata query required for external semantic investigation.
+
+It does not receive uploaded files, full datasets, sampled spreadsheet rows, or intentionally supplied personal field values.
+
+External-provider behavior remains subject to the provider's own infrastructure and policies, so operators should review those policies before using MoveProof with sensitive production data.
 
 ## Dependency and Infrastructure Security
 
@@ -205,16 +297,31 @@ Before a production release:
 - confirm `.env.local` and other secret-bearing files are ignored;
 - confirm the deployed frontend bundle does not contain backend credentials;
 - verify Cloud Run and Cloud SQL configuration;
-- verify the live health endpoint.
+- verify the live health endpoint;
+- verify Nebius through a real runtime inference call;
+- verify Tavily through a real runtime External Evidence Check if the feature is enabled;
+- confirm provider credentials do not appear in API responses or audit output.
 
 Do not use automated dependency upgrade commands that force breaking changes without reviewing and retesting the application.
 
 ## Security Limitations
 
-MoveProof reduces specific classes of migration risk. It does not claim to detect every possible semantic or business-rule error.
+MoveProof reduces specific classes of migration risk. It does not claim to detect every possible semantic, business-rule, or security error.
 
 A successful verification means the invariants defined by the approved migration contract were satisfied.
 
 It does not mean that every possible property of the dataset was proven correct.
 
-Evidence reports explicitly preserve the distinction between what was checked and what was not verified.
+External evidence can help a reviewer investigate semantic ambiguity, but it is not proof that a proposed interpretation is correct.
+
+Search results can be incomplete, outdated, conflicting, or incorrect.
+
+Evidence reports preserve the distinction between:
+
+- what was checked;
+- what passed;
+- what failed;
+- what requires review;
+- what was not verified.
+
+That distinction is intentional and forms part of MoveProof's security and verification model.

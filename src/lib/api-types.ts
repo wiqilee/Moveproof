@@ -251,16 +251,73 @@ export interface ApiEvidence {
   disclaimer: string;
 }
 
+export interface ApiEvidenceSource {
+  title: string;
+  url: string;
+  domain: string;
+  excerpt: string;
+  published_at: string | null;
+}
+
+/**
+ * Advisory context for a human reviewer.
+ *
+ * Deliberately not called a verification result anywhere in this type. It
+ * carries no status the verifier owns, and there is no field an interface
+ * could read as passed or failed.
+ */
+export interface ApiExternalEvidence {
+  migration_id: string;
+  context: {
+    source_column: string;
+    destination_column: string;
+    source_type: string | null;
+    destination_type: string | null;
+    proposed_operation: string | null;
+    risk_category: string | null;
+    source_system: string | null;
+  };
+  question: string;
+  sanitized_query: string;
+  provider: string;
+  checked_at: string;
+  status: "results" | "no_results";
+  result_count: number;
+  sources: ApiEvidenceSource[];
+  advisory_notice: string;
+}
+
+export interface ApiEvidenceQuestion {
+  id: string;
+  label: string;
+}
+
+export interface ApiEvidenceRequest {
+  source_column: string;
+  destination_column: string;
+  question: string;
+  source_type?: string | null;
+  destination_type?: string | null;
+  proposed_operation?: string | null;
+  risk_category?: string | null;
+  ambiguity_reason?: string | null;
+  source_system?: string | null;
+}
+
 export interface ApiHealth {
   status: "ok" | "degraded";
   database: { connected: boolean; detail: string | null };
   nebius: { configured: boolean; note: string };
+  exports: {
+    verified_csv_available: boolean;
+  };
   reports: {
     pdf_available: boolean;
     html_available: boolean;
     json_available: boolean;
   };
   rust_verifier: { available: boolean; note: string };
+  external_evidence: { available: boolean; provider: string; note: string };
   limits: { max_upload_bytes: number; model_sample_rows: number };
 }
 

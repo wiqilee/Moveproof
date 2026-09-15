@@ -53,6 +53,11 @@ spec:
               value: "nvidia/nemotron-3-super-120b-a12b"
             - name: MOVEPROOF_VERIFIER_BIN
               value: "/usr/local/bin/moveproof-verifier"
+            # Bounds on what leaves and what comes back. Not secrets.
+            - name: TAVILY_TIMEOUT_SECONDS
+              value: "20"
+            - name: TAVILY_MAX_RESULTS
+              value: "5"
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
@@ -62,6 +67,19 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: nebius-api-key
+                  key: latest
+            # External Evidence Check. Backend only: there is deliberately no
+            # NEXT_PUBLIC_ equivalent, because that would put a billable
+            # credential in every visitor's browser.
+            #
+            # Cloud Run refuses to deploy a revision that references a secret
+            # which does not exist, so create `tavily-api-key` before applying
+            # this file, or delete this block. Without it the feature disables
+            # itself and the rest of MoveProof is unaffected.
+            - name: TAVILY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: tavily-api-key
                   key: latest
           startupProbe:
             httpGet:
