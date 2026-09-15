@@ -41,6 +41,13 @@ export default function SettingsPage() {
         "Needed only for the model assisted mapping profile.",
     },
     {
+      label: "External Evidence Check",
+      available: health?.external_evidence?.available ?? false,
+      detail:
+        health?.external_evidence?.note ??
+        "Tavily-backed advisory references for human review. Never changes verification results or commit eligibility.",
+    },
+    {
       label: "Rust verifier",
       available: health?.rust_verifier.available ?? false,
       detail:

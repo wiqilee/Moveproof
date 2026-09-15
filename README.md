@@ -29,6 +29,7 @@ Built by [Wiqi Lee](https://x.com/wiqi_lee) for the Nebius x NVIDIA Global AI Ha
 
 - [The problem](#the-problem)
 - [What MoveProof does](#what-moveproof-does)
+- [Why MoveProof](#why-moveproof)
 - [Honest status](#honest-status)
 - [Quick start](#quick-start)
 - [Running the whole stack](#running-the-whole-stack)
@@ -53,23 +54,35 @@ Built by [Wiqi Lee](https://x.com/wiqi_lee) for the Nebius x NVIDIA Global AI Ha
 
 ## The problem
 
-A spreadsheet holds a customer ID of `00127`. Someone imports it into a database. The import reports success. Every row lands. No error appears anywhere in the log.
+Poor data quality is expensive, and migration can make the damage harder to detect. IBM cites a 2025 Institute for Business Value report that found 43% of chief operations officers identified data quality issues as their most significant data priority. Separately, Forrester reported that more than a quarter of organizations estimated losing over USD 5 million annually because of poor data quality. In a 2025 Syniti/UKISUG study, 79% of organizations said data management presents a challenge when moving from ECC 6.0 to S/4HANA.
+
+The dangerous failures are not always the ones that crash a migration. They are the ones that complete successfully.
+
+A spreadsheet holds a customer ID of `00127`. Someone imports it into a database. The import reports success. Every row lands. No error appears in the log.
 
 The value in the database is now `127`.
 
-An integer cast stripped the leading zero. Nothing was flagged because nothing was technically wrong: the destination accepted an integer, the row count matched, the process came back clean. The identifier simply no longer identifies the same customer, and nobody will notice until an invoice goes to the wrong person months later.
+An integer cast stripped the leading zero. Nothing was technically invalid: the destination accepted the integer, the row count matched, and the process completed successfully. But the stored value no longer matches the identifier in the source.
 
-This is the ordinary shape of migration damage, and it recurs in a small number of forms.
+This is the class of failure MoveProof is designed to expose: transformations that succeed technically while violating the intended data contract.
 
-| What happens | Why it goes unnoticed |
+| What changes silently | Why it can go unnoticed |
 | --- | --- |
-| An integer cast strips a leading zero | The row imported successfully and the count matched |
-| A locale guess turns 3 April into 4 March | Both readings are valid dates |
-| A float conversion loses a fraction of a cent | The total is close enough to look right |
-| A duplicate is silently dropped | Fewer rows arrived, and nobody agreed on what should happen |
-| A required field arrives empty | The row is rejected quietly, or a placeholder is invented |
+| `00127` becomes `127` | The integer is valid and the row count still matches |
+| `03/04/2024` becomes `2024-03-04` | Both interpretations are valid dates |
+| `1200.50` loses precision | The resulting number is still valid |
+| A duplicate is dropped | The operation may look like legitimate deduplication |
+| A required field becomes empty | The row may still satisfy the destination schema |
 
-Three things make this worse in practice. The damage is silent: a migration that destroys data and one that preserves it produce the same success message. The people doing it are usually operations staff rather than database specialists, and a wrong cast applied consistently across ten thousand rows looks exactly like success. Afterwards there is no record of which transformations ran, who approved them, or which properties were ever checked.
+Three things make these failures difficult to catch:
+
+- **Successful execution is not semantic preservation.** A migration can finish cleanly while changing values that matter.
+- **Scale hides systematic damage.** The same wrong transformation applied across thousands of rows can look perfectly consistent.
+- **Traditional success signals are weak evidence.** Row counts and clean logs do not show what changed, what was approved, or what was actually verified.
+
+MoveProof separates those questions: **what was approved, what actually happened to the data, and what evidence proves the approved contract held.**
+
+**Sources:** [IBM — A compounding threat: The true cost of poor data quality](https://www.ibm.com/think/insights/cost-of-poor-data-quality) · [Forrester — Millions Lost in 2023 Due to Poor Data Quality](https://www.forrester.com/report/millions-lost-in-2023-due-to-poor-data-quality-potential-for-billions-to-be-lost-with-ai-without-intervention/RES181258) · [Syniti/UKISUG — Data Strategies in an S/4HANA and AI World](https://www.sapusers.org/resource/data-strategies-in-an-s-4hana-and-ai-world.html)
 
 ---
 
@@ -77,23 +90,36 @@ Three things make this worse in practice. The damage is silent: a migration that
 
 Spreadsheet data goes into a structured database. In the model-assisted profile, an NVIDIA model proposes a typed transformation plan; deterministic proposal profiles are also available. Validated deterministic code executes the approved plan, and an independent verifier checks the staged result.
 
+## Why MoveProof
+
+Most migration tools optimize for getting data from A to B. MoveProof focuses on a different question: **did the data survive the move as intended?**
+
+It adds four things that ordinary import success does not prove:
+
+- **Explicit contracts.** Transformations are reviewed and approved before execution.
+- **Independent verification.** The checker does not share planner logic or simply trust the transformation that ran.
+- **Human control over ambiguity.** Unclear semantics are surfaced for review instead of guessed silently.
+- **Evidence that survives the run.** Plans, approvals, checks, repairs, limitations, and final outcomes remain part of the audit record.
+
+The goal is not to replace ETL systems. It is to add a verification layer around migrations where silent semantic damage matters.
+
 > **AI proposes. Validated code executes. Independent evidence decides. Humans approve ambiguity.**
 
-Each clause is a constraint in the codebase rather than a slogan.
+Each clause is a constraint in the codebase, not just a slogan.
 
-**AI proposes.** An NVIDIA model served through Nebius Token Factory reads the source schema and a five-row sample, then returns a typed mapping proposal. It never emits SQL, shell commands or code.
+**AI proposes.** An NVIDIA model served through Nebius Token Factory reads the source schema and a five-row sample, then returns a typed mapping proposal. It never emits SQL, shell commands, or executable code.
 
-**Validated code executes.** Every proposed operation is checked against an allowlist before a human sees it. `approve()` takes a validation result rather than a plan, so a proposal cannot become executable merely by calling a function on it. Lossy operations need an acknowledgement recorded per column by name. The executor refuses a plan whose mappings are not marked approved, which closes the path where a caller builds an approved-looking plan by hand.
+**Validated code executes.** Every proposed operation is checked against an allowlist before it can be approved. `approve()` accepts a validation result rather than a raw plan, so a proposal cannot become executable merely by calling an approval function on it. Lossy operations require an acknowledgement recorded for the affected column by name. The executor also refuses plans whose mappings are not explicitly approved, closing the path where a caller constructs an approved-looking plan by hand.
 
-**Evidence decides.** A verifier that shares no code with the planner reads the rows back out of the database and reports four outcomes that do not overlap: passed, failed, review required, and not verified. Commit is gated in the database layer against stored check rows, so a screen that forgets to disable a button still cannot commit.
+**Independent evidence decides.** A verifier that shares no code with the planner reads the staged rows back from the database and reports four non-overlapping outcomes: passed, failed, review required, and not verified. Commit eligibility is checked again in the database layer against stored check results, so a screen that forgets to disable a button still cannot bypass the gate.
 
-**Humans approve ambiguity.** When `03/04/2024` reads correctly two ways, the product asks. The answer becomes part of the versioned contract and is applied identically during execution and verification. External references may inform that decision, but they never count as verification results.
+**Humans approve ambiguity.** When a value such as `03/04/2024` admits two valid interpretations, the product asks. The decision becomes part of the versioned contract and is applied consistently during execution and verification. External references may inform that decision, but they never count as verification results.
 
 ### What it does not claim
 
-A passed verification means the invariants in the approved contract held. It does not mean every possible semantic error has been ruled out. The evidence report carries a limitations section naming every property that was not checked.
+A passed verification means the invariants in the approved contract held. It does not mean every possible semantic error has been ruled out. The evidence report includes a limitations section that names every property that was not checked.
 
-Human approvals recorded in a report are audit entries. They are not cryptographic signatures, and nothing in the product describes them as such.
+Human approvals recorded in a report are audit entries. They are not cryptographic signatures, and MoveProof does not describe them as such.
 
 ---
 
