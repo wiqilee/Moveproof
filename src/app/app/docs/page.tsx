@@ -53,10 +53,13 @@ export default function DocsPage() {
             review item, approving a repair, and committing.
           </p>
           <p>
-            A model proposes the mapping. Validated code executes exactly what
-            you approved. An independent verifier decides what actually
-            happened. You approve anything ambiguous.
-          </p>
+  A model proposes the mapping. Validated code executes exactly what
+  you approved. An independent verifier decides what actually
+  happened. You approve anything ambiguous. When field semantics are
+  unclear, External Evidence Check can retrieve advisory public
+  references to help inform that decision without changing
+  verification or commit eligibility.
+</p>
         </Section>
 
         <Section title="Supported files">
@@ -137,20 +140,51 @@ export default function DocsPage() {
         </Section>
 
         <Section title="What is sent to the model">
-          <p>
-          Only a summary of the schema and a small sample of rows, the size
-          of which is shown in Settings. Full datasets are never sent to the
-          model. The model never emits SQL, shell commands or executable code,
-          and every proposal is validated against an allowlist of supported
-          operations before a human or the executor sees it.
-          </p>
-          <p>
-          The model-assisted profile uses an NVIDIA model served through
-          Nebius Token Factory. Two deterministic profiles remain available
-          without live model credentials, keeping the core migration and
-          verification workflow reproducible in local and test environments.
-          </p>
-        </Section>
+  <p>
+    Only a summary of the schema and a small sample of rows, the size
+    of which is shown in Settings. Full datasets are never sent to the
+    model. The model never emits SQL, shell commands or executable code,
+    and every proposal is validated against an allowlist of supported
+    operations before a human or the executor sees it.
+  </p>
+  <p>
+    The model-assisted profile uses an NVIDIA model served through
+    Nebius Token Factory. Two deterministic profiles remain available
+    without live model credentials, keeping the core migration and
+    verification workflow reproducible in local and test environments.
+  </p>
+</Section>
+
+<Section title="External Evidence Check">
+  <p>
+    Some migration questions cannot be answered from the uploaded data
+    alone. A value such as 00127 may clearly be zero-padded, but the
+    dataset itself may not establish whether that formatting is
+    semantically required by the source system.
+  </p>
+  <p>
+    External Evidence Check lets a reviewer retrieve public references
+    through Tavily while reviewing an ambiguous mapping. The reviewer
+    chooses from a fixed set of questions, and MoveProof constructs the
+    query on the backend.
+  </p>
+  <p>
+    Only validated schema and review metadata are sent. Uploaded files,
+    full datasets, sampled rows and raw cell values are not sent to
+    Tavily.
+  </p>
+  <p>
+    The returned sources are advisory. They cannot approve a plan,
+    modify data, change a verification result, satisfy a mandatory
+    check or bypass the commit gate. The reviewer remains responsible
+    for deciding whether the external evidence is relevant and
+    trustworthy.
+  </p>
+  <p>
+    External Evidence Check is enabled in the production deployment and
+    has been verified through a real Tavily runtime request.
+  </p>
+</Section>
 
         <Section title="Data handling">
         <p>
