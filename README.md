@@ -9,8 +9,13 @@ An AI-assisted data migration workspace that verifies its own work and shows you
 [![CI](https://github.com/wiqilee/Moveproof/actions/workflows/ci.yml/badge.svg)](https://github.com/wiqilee/Moveproof/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-172554.svg)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-14-111827.svg)](https://nextjs.org)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB.svg)](https://www.python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-15803D.svg)](https://fastapi.tiangolo.com)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1.svg)](https://www.postgresql.org)
 [![Rust](https://img.shields.io/badge/Rust-2021-B45309.svg)](https://www.rust-lang.org)
+[![Nebius](https://img.shields.io/badge/Nebius-Token_Factory-5B5BD6.svg)](https://nebius.com)
+[![NVIDIA](https://img.shields.io/badge/NVIDIA-Nemotron-76B900.svg)](https://www.nvidia.com)
+[![Tavily](https://img.shields.io/badge/Tavily-External_Evidence-2563EB.svg)](https://tavily.com)
 
 [Live app](https://moveproof.vercel.app) · [Demo video](https://youtube.com/watch?v=REPLACE_WITH_DEMO_ID) · [Devpost entry](https://devpost.com/software/moveproof) · [Hackathon](https://nebiusglobalaihackathon.devpost.com/)
 
