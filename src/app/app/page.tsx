@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, FileSearch, Loader2, Plus, RefreshCw } from "lucide-react";
 import { TopBar } from "@/components/workspace/TopBar";
@@ -9,7 +9,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { migrationStatePresentation } from "@/domain/status";
 import type { MigrationState } from "@/domain/types";
+import { MigrationActions } from "@/components/migration/MigrationActions";
 import { useMigration } from "@/lib/migration-store";
+import type { ErrorState } from "@/lib/migration-store";
 import { routes } from "@/lib/routes";
 
 function stateLabel(row: {
@@ -27,6 +29,8 @@ function stateLabel(row: {
 export default function OverviewPage() {
   const { migrations, migrationsLoading, refreshMigrations, backendReachable } =
     useMigration();
+  const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<ErrorState | null>(null);
 
   useEffect(() => {
     if (backendReachable) void refreshMigrations();
@@ -89,6 +93,24 @@ export default function OverviewPage() {
             </button>
           </div>
 
+          {notice && (
+            <p
+              role="status"
+              className="mb-3 rounded-card border border-line bg-muted/60 px-4 py-2.5 text-sm"
+            >
+              {notice}
+            </p>
+          )}
+
+          {actionError && (
+            <div className="mb-3 rounded-card border border-bad/30 bg-bad-soft px-4 py-3">
+              <p className="text-sm font-semibold text-bad">{actionError.title}</p>
+              <p className="mt-0.5 text-sm leading-relaxed text-ink-soft">
+                {actionError.detail}
+              </p>
+            </div>
+          )}
+
           {migrationsLoading && migrations.length === 0 ? (
             <div
               className="flex items-center gap-2.5 rounded-card border border-line bg-surface px-5 py-8 text-sm text-ink-soft"
@@ -106,37 +128,82 @@ export default function OverviewPage() {
             />
           ) : (
             <div className="overflow-hidden rounded-card border border-line bg-surface">
-              {migrations.map((row, index) => (
-                <Link
-                  key={row.id}
-                  href={
-                    row.verified_at
-                      ? routes.verification(row.id)
-                      : row.approved_plan_version
-                        ? routes.run(row.id)
-                        : routes.newMigration
-                  }
-                  className={`flex items-center justify-between gap-4 px-4 py-4 transition-colors hover:bg-muted/60 ${
-                    index > 0 ? "border-t border-line" : ""
-                  }`}
-                >
-                  <div className="min-w-0">
+              {migrations.map((row, index) => {
+                // A draft has no screen of its own to open. It used to link to
+                // the wizard, which resets on mount, so the row looked like it
+                // would resume an upload and never did. Until a draft has an
+                // approved plan there is nothing to navigate to, so the row
+                // stays put and the actions menu carries the only thing you
+                // can actually do with it.
+                const destination = row.verified_at
+                  ? routes.verification(row.id)
+                  : row.approved_plan_version
+                    ? routes.run(row.id)
+                    : null;
+
+                const summary = (
+                  <>
                     <p className="truncate text-sm font-medium">{row.filename}</p>
                     <p className="mt-1 truncate font-mono text-xs text-ink-soft">
                       {row.id.slice(0, 8)} · {row.row_count} rows · {stateLabel(row)}
                     </p>
+                  </>
+                );
+
+                return (
+                  <div
+                    key={row.id}
+                    className={`flex items-center justify-between gap-4 px-4 py-4 ${
+                      index > 0 ? "border-t border-line" : ""
+                    }`}
+                  >
+                    {/* The link covers the summary rather than the whole row,
+                        so the actions button is not nested inside an anchor. */}
+                    {destination ? (
+                      <Link
+                        href={destination}
+                        className="-m-2 min-w-0 flex-1 rounded-md p-2 transition-colors hover:bg-muted/60"
+                      >
+                        {summary}
+                      </Link>
+                    ) : (
+                      <div className="min-w-0 flex-1">{summary}</div>
+                    )}
+
+                    <div className="flex shrink-0 items-center gap-2">
+                      <StatusPill
+                        presentation={
+                          migrationStatePresentation[row.state as MigrationState] ??
+                          migrationStatePresentation.draft
+                        }
+                      />
+                      {destination && (
+                        <ArrowRight size={15} className="text-line" aria-hidden />
+                      )}
+                      <MigrationActions
+                        migration={{
+                          id: row.id,
+                          filename: row.filename,
+                          committed: row.committed_at !== null,
+                        }}
+                        onError={(error) => {
+                          setNotice(null);
+                          setActionError(error);
+                        }}
+                        onDone={({ rowsRemoved }) => {
+                          setActionError(null);
+                          setNotice(
+                            rowsRemoved === null
+                              ? `Deleted ${row.filename}.`
+                              : `Rolled back ${rowsRemoved} row(s) and deleted ${row.filename}.`
+                          );
+                          void refreshMigrations();
+                        }}
+                      />
+                    </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <StatusPill
-                      presentation={
-                        migrationStatePresentation[row.state as MigrationState] ??
-                        migrationStatePresentation.draft
-                      }
-                    />
-                    <ArrowRight size={15} className="text-line" aria-hidden />
-                  </div>
-                </Link>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

@@ -12,6 +12,7 @@ import type { MouseEvent } from "react";
  */
 export function ConfirmDialog({
   open,
+  busy = false,
   title,
   body,
   confirmLabel,
@@ -20,24 +21,30 @@ export function ConfirmDialog({
   onCancel,
 }: {
   open: boolean;
+  busy?: boolean;
   title: string;
   body: string;
   confirmLabel: string;
   cancelLabel: string;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   onCancel: () => void;
 }) {
   const confirmRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
+
     confirmRef.current?.focus();
+
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
+      if (event.key === "Escape" && !busy) {
+        onCancel();
+      }
     };
+
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onCancel]);
+  }, [open, busy, onCancel]);
 
   if (!open) return null;
 
@@ -45,33 +52,43 @@ export function ConfirmDialog({
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-navy/25 p-4 sm:items-center"
       role="presentation"
-      onClick={onCancel}
+      onClick={() => {
+        if (!busy) onCancel();
+      }}
     >
       <div
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-title"
         aria-describedby="confirm-body"
+        aria-busy={busy}
         className="w-full max-w-md rounded-card border border-line bg-surface p-6 shadow-lift"
         onClick={(event: MouseEvent<HTMLDivElement>) => event.stopPropagation()}
       >
         <h2 id="confirm-title" className="text-base font-semibold tracking-tight">
           {title}
         </h2>
+
         <p id="confirm-body" className="mt-2 text-sm leading-relaxed text-ink-soft">
           {body}
         </p>
+
         <div className="mt-6 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
           <button
+            type="button"
             onClick={onCancel}
-            className="rounded-control border border-line bg-surface px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-muted"
+            disabled={busy}
+            className="rounded-control border border-line bg-surface px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
           >
             {cancelLabel}
           </button>
+
           <button
+            type="button"
             ref={confirmRef}
-            onClick={onConfirm}
-            className="rounded-control bg-bad px-4 py-2.5 text-sm font-semibold text-surface transition-colors hover:bg-bad/90"
+            onClick={() => void onConfirm()}
+            disabled={busy}
+            className="rounded-control bg-bad px-4 py-2.5 text-sm font-semibold text-surface transition-colors hover:bg-bad/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {confirmLabel}
           </button>

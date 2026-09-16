@@ -3,10 +3,19 @@
 import { useEffect, useState } from "react";
 import type { ChangeEvent } from "react";
 import Link from "next/link";
-import { ArrowRight, FileSearch, Loader2, Plus, Search } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  FileSearch,
+  Loader2,
+  Plus,
+  Search,
+} from "lucide-react";
 import { TopBar } from "@/components/workspace/TopBar";
 import { PageHeading } from "@/components/workspace/PageHeading";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { MigrationActions } from "@/components/migration/MigrationActions";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { migrationStatePresentation } from "@/domain/status";
 import type { MigrationState } from "@/domain/types";
@@ -17,6 +26,10 @@ export default function MigrationsPage() {
   const { migrations, migrationsLoading, refreshMigrations, backendReachable } =
     useMigration();
   const [filter, setFilter] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<{ title: string; detail: string } | null>(
+    null
+  );
 
   useEffect(() => {
     if (backendReachable) void refreshMigrations();
@@ -49,6 +62,41 @@ export default function MigrationsPage() {
             </Link>
           }
         />
+
+        {notice && (
+          <div
+            role="status"
+            className="mb-4 flex items-start gap-2.5 rounded-card border border-ok/30 bg-ok-soft px-4 py-3 text-sm"
+          >
+            <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-ok" aria-hidden />
+            <p className="flex-1">{notice}</p>
+            <button
+              onClick={() => setNotice(null)}
+              className="shrink-0 text-xs font-semibold text-ink-soft hover:text-ink"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {actionError && (
+          <div
+            role="alert"
+            className="mb-4 flex items-start gap-2.5 rounded-card border border-bad/30 bg-bad-soft px-4 py-3 text-sm"
+          >
+            <AlertTriangle size={15} className="mt-0.5 shrink-0 text-bad" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-bad">{actionError.title}</p>
+              <p className="mt-0.5 leading-relaxed text-ink-soft">{actionError.detail}</p>
+            </div>
+            <button
+              onClick={() => setActionError(null)}
+              className="shrink-0 text-xs font-semibold text-ink-soft hover:text-ink"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {migrations.length > 0 && (
           <label className="mb-4 flex items-center gap-2.5 rounded-control border border-line bg-surface px-3 py-2.5">
@@ -127,20 +175,42 @@ export default function MigrationsPage() {
                           }
                         />
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <Link
-                          href={
-                            row.verified_at
-                              ? routes.verification(row.id)
-                              : row.approved_plan_version
-                                ? routes.run(row.id)
-                                : routes.newMigration
-                          }
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-brand hover:underline"
-                        >
-                          Open
-                          <ArrowRight size={12} aria-hidden />
-                        </Link>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <Link
+                            href={
+                              row.verified_at
+                                ? routes.verification(row.id)
+                                : row.approved_plan_version
+                                  ? routes.run(row.id)
+                                  : routes.newMigration
+                            }
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-brand hover:underline"
+                          >
+                            Open
+                            <ArrowRight size={12} aria-hidden />
+                          </Link>
+                          <MigrationActions
+                            migration={{
+                              id: row.id,
+                              filename: row.filename,
+                              committed: row.committed_at !== null,
+                            }}
+                            onError={(error) => {
+                              setNotice(null);
+                              setActionError(error);
+                            }}
+                            onDone={({ rowsRemoved }) => {
+                              setActionError(null);
+                              setNotice(
+                                rowsRemoved === null
+                                  ? `Deleted ${row.filename} and everything derived from it.`
+                                  : `Removed ${rowsRemoved} committed row(s) from the destination, then deleted ${row.filename}.`
+                              );
+                              void refreshMigrations();
+                            }}
+                          />
+                        </div>
                       </td>
                     </tr>
                   ))}
