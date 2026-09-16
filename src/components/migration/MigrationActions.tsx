@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Loader2, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { api, describeError } from "@/data/api";
@@ -19,6 +20,18 @@ import type { ErrorState } from "@/lib/migration-store";
  * separate event that the operator has to be told about before agreeing.
  */
 
+/** Menu geometry, in pixels. Kept here so measurement and render agree. */
+const MENU_WIDTH = 224;
+const MENU_MAX_HEIGHT = 160;
+
+interface MenuPosition {
+  left: number;
+  /** Viewport y of the menu edge nearest the trigger. */
+  top: number;
+  /** True when the menu opens upwards because there is no room below. */
+  flip: boolean;
+}
+
 export interface DeletableMigration {
   id: string;
   filename: string;
@@ -36,17 +49,89 @@ export function MigrationActions({
   onError: (error: ErrorState) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [position, setPosition] = useState<MenuPosition | null>(null);
+  // document.body is unavailable during server rendering, so the portal waits
+  // for the client.
+  const [mounted, setMounted] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
+  /**
+   * Measure the trigger and place the menu against it in viewport
+   * coordinates.
+   *
+   * The menu is rendered into document.body, so it sits outside every card,
+   * table and scroll container in the page. That is the whole point: an
+   * ancestor with overflow:hidden clips a positioned descendant no matter
+   * what its z-index is, and both list pages have one.
+   *
+   * Right-aligned to the trigger, flipped above it when there is not enough
+   * room below, and clamped to the viewport so it can never hang off the
+   * left edge on a narrow screen.
+   */
+  const place = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const margin = 8;
+    const below = window.innerHeight - rect.bottom;
+    const flip = below < MENU_MAX_HEIGHT + margin && rect.top > below;
+
+    const left = Math.max(
+      margin,
+      Math.min(
+        rect.right - MENU_WIDTH,
+        window.innerWidth - MENU_WIDTH - margin
+      )
+    );
+
+    setPosition({
+      left,
+      top: flip ? rect.top - margin : rect.bottom + margin,
+      flip,
+    });
+  }, []);
+
+  useEffect(() => setMounted(true), []);
+
+  // Measure before paint, so the menu never appears at the wrong place for a
+  // frame and then jumps.
+  useEffect(() => {
+    if (menuOpen) place();
+    else setPosition(null);
+  }, [menuOpen, place]);
+
+  // A menu anchored to a rect goes stale the moment the page moves under it.
+  // Reposition on scroll and resize rather than leaving it floating beside
+  // nothing. `true` captures scrolls on inner containers as well as the
+  // window.
   useEffect(() => {
     if (!menuOpen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMenuOpen(false);
+    const reposition = () => place();
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen, place]);
+
+  // Escape closes, and focus returns to the trigger rather than being lost at
+  // the top of the document.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        setMenuOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [menuOpen]);
 
   const committed = migration.committed;
@@ -77,9 +162,54 @@ export function MigrationActions({
     }
   };
 
+  const menu =
+    menuOpen && position ? (
+      <>
+        {/* Outside-click. Rendered in the portal too, so it covers the whole
+            viewport regardless of where the trigger sits. */}
+        <div
+          className="fixed inset-0 z-[90]"
+          role="presentation"
+          onClick={() => setMenuOpen(false)}
+        />
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label="Migration actions"
+          style={{
+            position: "fixed",
+            left: position.left,
+            top: position.flip ? undefined : position.top,
+            bottom: position.flip ? window.innerHeight - position.top : undefined,
+            width: MENU_WIDTH,
+            maxHeight: MENU_MAX_HEIGHT,
+          }}
+          className="z-[95] overflow-hidden rounded-card border border-line bg-surface py-1 shadow-lift"
+        >
+          <button
+            role="menuitem"
+            onClick={() => {
+              setMenuOpen(false);
+              setConfirming(true);
+            }}
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-bad transition-colors hover:bg-bad-soft"
+          >
+            {committed ? <RotateCcw size={14} aria-hidden /> : <Trash2 size={14} aria-hidden />}
+            {committed ? "Rollback and delete" : "Delete migration"}
+          </button>
+          {committed && (
+            <p className="px-3 pb-2 pt-1 text-[11px] leading-relaxed text-ink-soft">
+              This migration has written rows to the destination.
+            </p>
+          )}
+        </div>
+      </>
+    ) : null;
+
   return (
-    <div className="relative" ref={menuRef}>
+    <div className="relative">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setMenuOpen((open) => !open)}
         aria-label={`Actions for ${migration.filename}`}
@@ -94,37 +224,7 @@ export function MigrationActions({
         )}
       </button>
 
-      {menuOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-40"
-            role="presentation"
-            onClick={() => setMenuOpen(false)}
-          />
-          <div
-            role="menu"
-            aria-label="Migration actions"
-            className="absolute right-0 z-50 mt-1.5 w-56 overflow-hidden rounded-card border border-line bg-surface py-1 shadow-lift"
-          >
-            <button
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                setConfirming(true);
-              }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-bad transition-colors hover:bg-bad-soft"
-            >
-              {committed ? <RotateCcw size={14} aria-hidden /> : <Trash2 size={14} aria-hidden />}
-              {committed ? "Rollback and delete" : "Delete migration"}
-            </button>
-            {committed && (
-              <p className="px-3 pb-2 pt-1 text-[11px] leading-relaxed text-ink-soft">
-                This migration has written rows to the destination.
-              </p>
-            )}
-          </div>
-        </>
-      )}
+      {mounted && menu ? createPortal(menu, document.body) : null}
 
       <ConfirmDialog
         open={confirming}

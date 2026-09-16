@@ -148,7 +148,14 @@ export default function MigrationsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.map((row) => (
+                  {visible.map((row) => {
+                    const destination = row.verified_at
+                      ? routes.verification(row.id)
+                      : row.approved_plan_version
+                        ? routes.run(row.id)
+                        : null;
+
+                    return (
                     <tr key={row.id} className="border-t border-line">
                       <td className="px-4 py-3">
                         <p className="font-medium">{row.filename}</p>
@@ -177,19 +184,20 @@ export default function MigrationsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
-                          <Link
-                            href={
-                              row.verified_at
-                                ? routes.verification(row.id)
-                                : row.approved_plan_version
-                                  ? routes.run(row.id)
-                                  : routes.newMigration
-                            }
-                            className="inline-flex items-center gap-1 text-xs font-semibold text-brand hover:underline"
-                          >
-                            Open
-                            <ArrowRight size={12} aria-hidden />
-                          </Link>
+                          {/* A draft has no screen of its own. Linking it to
+                              the wizard looked like "resume" but reset it, so
+                              the link is simply absent until there is an
+                              approved plan to open. The actions menu beside it
+                              still works. */}
+                          {destination && (
+                            <Link
+                              href={destination}
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-brand hover:underline"
+                            >
+                              Open
+                              <ArrowRight size={12} aria-hidden />
+                            </Link>
+                          )}
                           <MigrationActions
                             migration={{
                               id: row.id,
@@ -213,7 +221,8 @@ export default function MigrationsPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
