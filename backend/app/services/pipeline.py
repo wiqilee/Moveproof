@@ -22,6 +22,7 @@ from app.db import repository
 from app.db.repository import NotFound
 from app.domain.contract import CUSTOMERS_CONTRACT_V1, VerificationContract
 from app.domain.plan import ApprovalRefused, ValidationResult, approve, validate_plan
+from app.services.routing import RoutingDecision, evaluate as evaluate_routing
 from app.domain.plans import legacy_integer_cast_plan, safe_plan
 from app.domain.schema import CUSTOMERS_V1
 from app.domain.types import (
@@ -156,8 +157,12 @@ def propose_plan(
     migration = repository.load_migration(conn, migration_id)
     columns = tuple(migration["source_columns"])
 
+    # Only the model profile has a model to route between. The deterministic
+    # profiles carry no routing record because no model was consulted.
+    routing: RoutingDecision | None = None
+
     if profile == "model":
-        plan = _propose_via_model(conn, migration_id, columns)
+        plan, routing = _propose_with_routing(conn, migration_id, columns)
     elif profile == "legacy":
         plan = legacy_integer_cast_plan(date_policy=DateFormatPolicy.ISO)
     else:
@@ -175,27 +180,124 @@ def propose_plan(
         f"Proposed plan v{plan.version} from the {profile} profile, "
         f"{len(validation.issues)} issue(s)",
     )
-    return _validation_payload(validation)
+
+    payload = _validation_payload(validation)
+    if routing is not None:
+        # Surfaced to the interface so a reviewer can see which model drafted
+        # what they are approving, and why.
+        payload["routing"] = routing.as_metadata()
+    return payload
+
+
+def _propose_with_routing(
+    conn: psycopg.Connection, migration_id: uuid.UUID, columns: tuple[str, ...]
+) -> tuple[MigrationPlan, RoutingDecision]:
+    """Propose on the default model, then escalate only when it is justified.
+
+    Two passes at most:
+
+        Super -> typed proposal -> deterministic validation -> routing decision
+          no escalation  -> the Super proposal stands
+          escalation     -> Ultra, same bounded input -> typed proposal
+
+    The escalated proposal returns to `propose_plan`, which validates it exactly
+    as it validates every other plan. A deeper model does not skip validation,
+    does not skip acknowledgement, and does not reach the executor by any path
+    the first proposal could not use.
+
+    If the escalation call fails, the Super proposal stands. A third party being
+    slow is not a reason to block a migration.
+    """
+    default_model = settings.nebius_model_id or "nebius:default"
+    escalation_model = settings.nebius_escalation_model_id or None
+
+    first = _propose_via_model(conn, migration_id, columns)
+
+    # Routed on the validated first proposal, so the signals are facts the
+    # validator computed rather than anything the model asserted about itself.
+    first_validation = validate_plan(first, SCHEMA, columns)
+    decision = evaluate_routing(first_validation, default_model, escalation_model)
+
+    if not decision.escalate:
+        _log_routing(conn, migration_id, decision)
+        return first, decision
+
+    try:
+        deeper = _propose_via_model(
+            conn, migration_id, columns, model_id=decision.selected_model
+        )
+    except PipelineError as exc:
+        # Escalation is an optimisation, never a dependency.
+        fallback = RoutingDecision(
+            escalate=False,
+            default_model=default_model,
+            selected_model=default_model,
+            reasons=(
+                *decision.reasons,
+                f"the escalation model did not respond, so the first proposal "
+                f"stands ({exc})",
+            ),
+        )
+        _log_routing(conn, migration_id, fallback)
+        return first, fallback
+
+    _log_routing(conn, migration_id, decision)
+    return deeper, decision
+
+
+def _log_routing(
+    conn: psycopg.Connection, migration_id: uuid.UUID, decision: RoutingDecision
+) -> None:
+    """Record which model drafted the proposal and why.
+
+    Model ids and the deterministic reasons only. No row values are written to
+    justify a routing decision, and no credential appears: the client holds the
+    key and never returns it.
+    """
+    repository.log_event(
+        conn,
+        migration_id,
+        None,
+        "info",
+        (
+            f"Reasoning escalated to {decision.selected_model}"
+            if decision.escalate
+            else f"Reasoning stayed on {decision.selected_model}"
+        ),
+        event_type="model_routing_decided",
+        metadata=decision.as_metadata(),
+    )
 
 
 def _propose_via_model(
-    conn: psycopg.Connection, migration_id: uuid.UUID, columns: tuple[str, ...]
+    conn: psycopg.Connection,
+    migration_id: uuid.UUID,
+    columns: tuple[str, ...],
+    model_id: str | None = None,
 ) -> MigrationPlan:
     """Ask Nebius for a mapping and turn the reply into a typed plan.
 
     The reply is data, never code. Unknown operation names are dropped here and
     the resulting plan still goes through validate_plan, so a model cannot widen
-    the allowlist by inventing an operation.
+    the allowlist by inventing an operation. That holds identically for the
+    default model and the escalation model: a deeper model produces a proposal,
+    not a decision.
+
+    `model_id` pins the call to one model. Omitted, it uses the configured
+    default.
     """
     from app.nebius.client import NebiusClient, NebiusNotConfigured, NebiusUnavailable
 
     try:
-        client = NebiusClient()
+        client = NebiusClient.for_model(model_id) if model_id else NebiusClient()
     except NebiusNotConfigured as exc:
         raise PipelineError(
             f"The model profile needs Nebius credentials. {exc}"
         ) from exc
 
+    # The same bounded input for either model: schema metadata and at most
+    # settings.model_sample_rows rows. Escalation buys deeper reasoning, never
+    # a wider view of the data.
     sample = _sample_for_model(conn, migration_id)
     schema_summary = "\n".join(
         f"  {c.name} {c.data_type}"

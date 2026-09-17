@@ -7,47 +7,73 @@ MoveProof uses a split production architecture:
 - PostgreSQL on Google Cloud SQL
 - private object storage on Google Cloud Storage
 - Rust verifier packaged with the backend
-- model inference through Nebius Token Factory
+- NVIDIA model inference through Nebius Token Factory
 - external semantic evidence through Tavily
 
-## Current Production Deployment
+## Current production deployment
 
 Frontend:
 
-`https://moveproof-wiqi.vercel.app`
+```text
+https://moveproof-wiqi.vercel.app
+```
 
 Backend:
 
-`https://moveproof-backend-579259634424.asia-southeast2.run.app`
-
-Production NVIDIA model:
-
-`nvidia/nemotron-3-super-120b-a12b`
+```text
+https://moveproof-backend-579259634424.asia-southeast2.run.app
+```
 
 Nebius Token Factory base URL:
 
-`https://api.tokenfactory.nebius.com/v1`
+```text
+https://api.tokenfactory.nebius.com/v1
+```
+
+Primary NVIDIA model:
+
+```text
+nvidia/nemotron-3-super-120b-a12b
+```
+
+Selective escalation model:
+
+```text
+nvidia/Nemotron-3-Ultra-550b-a55b
+```
 
 The core production stack has successfully completed the full MoveProof workflow:
 
-upload → plan approval → staging → verification failure → repair → rerun from original source bytes → verification pass → commit → evidence generation.
+```text
+upload
+→ plan approval
+→ staging
+→ verification failure
+→ repair
+→ rerun from original source bytes
+→ verification pass
+→ commit
+→ evidence generation
+```
 
-A real Nebius Token Factory inference call has also been verified separately using the production NVIDIA model.
+A real Nebius Token Factory inference call has been verified with the production Super model. Direct runtime access to the Ultra model has also been verified separately through Token Factory.
+
+The adaptive Super-to-Ultra routing path is implemented in the repository. It should only be described as **production-verified** after the updated Cloud Run revision is deployed and a real model-assisted migration produces enough deterministic validator concerns to trigger the Ultra pass.
 
 ### External Evidence Check status
 
-The Tavily-powered External Evidence Check is implemented in the repository as a real backend capability.
+The Tavily-powered External Evidence Check is active and production-verified.
 
-It becomes active in production after:
+Production verification included:
 
-1. database migration `003_evidence_events.sql` is applied;
-2. the `tavily-api-key` secret exists in Google Secret Manager;
-3. the updated Cloud Run configuration is deployed;
-4. a real production External Evidence Check returns normalized Tavily sources successfully.
+1. applying database migration `003_evidence_events.sql`;
+2. supplying `tavily-api-key` to Cloud Run through Secret Manager;
+3. deploying the updated backend revision; and
+4. confirming a real production External Evidence Check returned normalized Tavily advisory sources without exposing the credential.
 
-Until those steps are completed, the existing MoveProof migration workflow remains available and Tavily does not participate in verification or commit decisions.
+Tavily remains advisory. It does not participate in deterministic verification and cannot alter commit eligibility.
 
-## What Runs Where
+## What runs where
 
 | Component | Host | Responsibility |
 | --- | --- | --- |
@@ -55,37 +81,49 @@ Until those steps are completed, the existing MoveProof migration workflow remai
 | FastAPI backend | Google Cloud Run | Workflow orchestration and API |
 | Rust verifier | Backend container | Independent canonical reconciliation |
 | PostgreSQL | Google Cloud SQL | Workflow state, staging, verification records, audit events, and destination data |
-| Object storage | Google Cloud Storage | Private object storage |
-| Model inference | Nebius Token Factory | NVIDIA model-assisted reasoning |
-| External evidence | Tavily | Public reference discovery for semantic review |
+| Object storage | Google Cloud Storage | Private source-object storage |
+| Primary model | Nebius Token Factory | Routine schema interpretation and migration-plan reasoning |
+| Escalation model | Nebius Token Factory | Selective deeper reasoning for plans with multiple validator concerns |
+| External evidence | Tavily | Public-reference discovery for human semantic review |
 
-The production NVIDIA model is:
+Google Cloud does not provide model inference for MoveProof. Vertex AI and Gemini are not part of the production inference path.
 
-`nvidia/nemotron-3-super-120b-a12b`
+Nebius and Tavily have separate roles:
 
-Google Cloud does not provide model inference for MoveProof.
+- Nebius assists with mapping, risk analysis, diagnosis, and repair proposals.
+- Tavily retrieves external public references that may help a human resolve semantic ambiguity.
+- Neither provider can bypass deterministic validation, human approval, independent verification, or the database-backed commit gate.
 
-Vertex AI and Gemini are not part of the production inference path.
-
-Tavily has a separate role from Nebius. Nebius assists with mapping, risk analysis, diagnosis, and repair proposals. Tavily retrieves external public references that may help a human resolve semantic ambiguity.
-
-Neither provider is allowed to bypass deterministic verification or commit gates.
-
-## Architecture Principle
+## Architecture principle
 
 MoveProof follows this boundary:
 
-> AI proposes. Validated code executes. Independent evidence decides. Humans approve ambiguity.
+> **AI proposes. Validated code executes. Independent evidence decides. Humans approve ambiguity.**
 
 Model output and external evidence are both treated as untrusted inputs.
 
-The NVIDIA model does not directly execute SQL, shell commands, Python, or arbitrary application code.
+The NVIDIA models do not directly execute SQL, shell commands, Python, or arbitrary application code. Model output is parsed into a typed proposal and validated against the supported operation allowlist.
 
 Tavily does not modify plans, staged rows, verification states, or destination data.
 
-Transformation execution remains deterministic and constrained by the supported operation allowlist.
+Transformation execution remains deterministic. Verification remains separate from planning and external evidence gathering.
 
-Verification remains separate from planning and external evidence gathering.
+### Adaptive reasoning escalation
+
+The model-assisted planner uses two bounded reasoning passes only when needed:
+
+1. **Nemotron 3 Super** proposes the initial typed migration plan.
+2. MoveProof validates that proposal deterministically.
+3. The routing policy reads the validator output, not a model-generated confidence score.
+4. Fewer than two validator concerns keeps the Super proposal.
+5. Two or more validator concerns triggers a second pass with **Nemotron 3 Ultra**.
+6. The Ultra result is still untrusted and must pass the same deterministic validation and approval gates.
+
+A concern is a signal the validator already computes, such as a mapping that requires acknowledgement by name or a non-fatal validation issue. The routing layer does not invent a second authority system.
+
+The two model passes share the same bounded sample path controlled by `MODEL_SAMPLE_ROWS`. The escalation pass does not receive a larger slice of the dataset.
+
+If `NEBIUS_ESCALATION_MODEL_ID` is unset, MoveProof returns to Super-only behavior. If the escalation request fails, the validated Super proposal remains available and the escalation failure is recorded. The routing layer cannot approve a plan, execute a transformation, alter verification results, or commit data.
 
 ## Prerequisites
 
@@ -114,7 +152,7 @@ You also need:
 - Tavily access if External Evidence Check will be enabled;
 - Google Cloud CLI;
 - Cloud SQL Auth Proxy for local database administration;
-- a production PostgreSQL password;
+- a production PostgreSQL password; and
 - an appropriate Google Cloud billing configuration.
 
 Never commit production credentials to the repository.
@@ -123,25 +161,32 @@ Never commit production credentials to the repository.
 
 Verify model access before provisioning unnecessary infrastructure.
 
-From `backend/`:
+From `backend/`, first test the primary Super model:
 
 ```bash
 export NEBIUS_API_KEY='your-key'
+export NEBIUS_BASE_URL='https://api.tokenfactory.nebius.com/v1'
+export NEBIUS_MODEL_ID='nvidia/nemotron-3-super-120b-a12b'
+
 python scripts/nebius_smoke_test.py
 ```
 
-The smoke test makes a real inference request.
+Then verify direct access to the escalation model:
 
-For the current MoveProof production configuration, the model is:
+```bash
+export NEBIUS_BASE_URL='https://api.tokenfactory.nebius.com/v1'
+export NEBIUS_MODEL_ID='nvidia/Nemotron-3-Ultra-550b-a55b'
 
-```text
-nvidia/nemotron-3-super-120b-a12b
+python scripts/nebius_smoke_test.py
 ```
 
-The Token Factory base URL is:
+The smoke test makes a real inference request. It proves that the account can reach the selected model; it does **not** prove that adaptive routing has triggered that model inside the deployed MoveProof workflow.
 
-```text
-https://api.tokenfactory.nebius.com/v1
+Restore the primary model value in your shell if you continue testing locally:
+
+```bash
+export NEBIUS_MODEL_ID='nvidia/nemotron-3-super-120b-a12b'
+export NEBIUS_ESCALATION_MODEL_ID='nvidia/Nemotron-3-Ultra-550b-a55b'
 ```
 
 Do not print, commit, or expose the Nebius API key.
@@ -183,7 +228,7 @@ gcloud sql instances patch moveproof \
 
 Do not stop the production database while judges, reviewers, or other users are expected to access the application.
 
-## 3. Apply Database Migrations
+## 3. Apply database migrations
 
 Use Cloud SQL Auth Proxy when applying migrations from a local machine.
 
@@ -204,19 +249,19 @@ DATABASE_URL="postgresql://moveproof:PASSWORD@127.0.0.1:5434/moveproof" \
   python -m app.db.migrations
 ```
 
-The Tavily feature introduces:
+The Tavily feature introduced:
 
 ```text
 003_evidence_events.sql
 ```
 
-It adds nullable structured event fields to the existing audit-event table.
+It adds nullable structured event fields to the existing audit-event table. Existing rows remain valid, and the migration is designed to be safe to rerun through the normal migration runner.
 
-Existing rows remain valid, and the migration is designed to be safe to rerun through the normal migration runner.
+Adaptive model routing does not require a new database migration. It records routing information through the existing audit path.
 
-Apply all migrations before starting the updated backend.
+Apply all migrations before starting an updated backend revision.
 
-## 4. Store Secrets
+## 4. Store secrets
 
 Production secrets belong in Google Secret Manager.
 
@@ -249,13 +294,20 @@ printf '%s' "$NEW_TAVILY_API_KEY" \
   | gcloud secrets versions add tavily-api-key --data-file=-
 ```
 
-`deploy/cloudrun.yaml` references the Tavily secret.
+To rotate the Nebius key later:
 
-Cloud Run will refuse to create a revision that references a Secret Manager secret that does not exist. Therefore, create `tavily-api-key` before applying a Cloud Run configuration that references it.
+```bash
+printf '%s' "$NEW_NEBIUS_API_KEY" \
+  | gcloud secrets versions add nebius-api-key --data-file=-
+```
 
-No Tavily credential belongs in a `NEXT_PUBLIC_*` variable.
+`NEBIUS_MODEL_ID` and `NEBIUS_ESCALATION_MODEL_ID` are model identifiers, not credentials. They belong in normal backend configuration and do not require Secret Manager entries.
 
-## 5. Service Account and IAM
+`deploy/cloudrun.yaml` references the provider secrets. Cloud Run refuses to create a revision that references a Secret Manager secret that does not exist.
+
+No Nebius or Tavily credential belongs in a `NEXT_PUBLIC_*` variable.
+
+## 5. Service account and IAM
 
 Create a dedicated runtime service account:
 
@@ -277,7 +329,7 @@ do
 done
 ```
 
-The existing production MoveProof service account already has Secret Manager access, so Tavily does not require an additional IAM role.
+The production MoveProof service account already has Secret Manager access, so neither Tavily nor adaptive model routing requires an additional IAM role.
 
 Avoid broad runtime roles such as Owner or Editor.
 
@@ -303,7 +355,7 @@ Uniform bucket-level access should remain enabled.
 
 Uploaded objects must not be exposed through public URLs.
 
-## 7. Build the Backend
+## 7. Build the backend
 
 The backend image includes the Rust verifier.
 
@@ -316,15 +368,31 @@ gcloud builds submit \
 
 The build compiles the backend image and Rust verifier according to the repository configuration and publishes the resulting image to Artifact Registry.
 
-Do not replace this command with an unrelated Docker build path unless the build configuration itself has changed.
+Do not replace this command with an unrelated Docker build path unless `deploy/cloudbuild.yaml` itself changes.
 
-## 8. Deploy Cloud Run
+## 8. Configure and deploy Cloud Run
 
 The production Cloud Run configuration is defined in:
 
 ```text
 deploy/cloudrun.yaml
 ```
+
+The model-related environment configuration should be:
+
+```text
+NEBIUS_BASE_URL=https://api.tokenfactory.nebius.com/v1
+NEBIUS_MODEL_ID=nvidia/nemotron-3-super-120b-a12b
+NEBIUS_ESCALATION_MODEL_ID=nvidia/Nemotron-3-Ultra-550b-a55b
+```
+
+The frontend origin should be:
+
+```text
+CORS_ORIGINS=https://moveproof-wiqi.vercel.app
+```
+
+`NEBIUS_API_KEY`, `DATABASE_URL`, and `TAVILY_API_KEY` must come from Secret Manager. Do not place secret values directly in the YAML.
 
 Resolve the deployment placeholders:
 
@@ -336,6 +404,14 @@ sed \
   > /tmp/cloudrun.resolved.yaml
 ```
 
+Inspect the resolved file before deploying:
+
+```bash
+grep -E \
+  'CORS_ORIGINS|NEBIUS_BASE_URL|NEBIUS_MODEL_ID|NEBIUS_ESCALATION_MODEL_ID|TAVILY' \
+  /tmp/cloudrun.resolved.yaml
+```
+
 Then deploy:
 
 ```bash
@@ -345,18 +421,11 @@ gcloud run services replace \
   --project="$GCP_PROJECT_ID"
 ```
 
-The production inference configuration should include:
+The escalation model uses the same Nebius API key and the same Token Factory endpoint as the primary model. No additional secret is required.
 
-```text
-NEBIUS_BASE_URL=https://api.tokenfactory.nebius.com/v1
-NEBIUS_MODEL_ID=nvidia/nemotron-3-super-120b-a12b
-```
+Leaving `NEBIUS_ESCALATION_MODEL_ID` unset returns MoveProof to Super-only behavior.
 
-`NEBIUS_API_KEY` and `TAVILY_API_KEY` must come from Secret Manager.
-
-Do not place secret values directly in the YAML.
-
-## 9. Public Backend Access
+## 9. Public backend access
 
 For the public hackathon deployment:
 
@@ -372,16 +441,24 @@ Only the API service is publicly callable.
 
 Database credentials, provider credentials, and private object-storage access remain server-side.
 
-## 10. Verify Backend Health
+## 10. Verify backend health
+
+Resolve the backend URL:
+
+```bash
+BACKEND=$(gcloud run services describe moveproof-backend \
+  --region="$GCP_REGION" \
+  --project="$GCP_PROJECT_ID" \
+  --format='value(status.url)')
+```
 
 Check the deployed backend:
 
 ```bash
-curl -fsS \
-  "https://moveproof-backend-579259634424.asia-southeast2.run.app/health"
+curl -fsS "$BACKEND/health" | jq
 ```
 
-The established production deployment has already been verified to report:
+A healthy production revision should report the established backend capabilities, including:
 
 - overall status OK;
 - PostgreSQL connected;
@@ -389,15 +466,64 @@ The established production deployment has already been verified to report:
 - Rust verifier available;
 - JSON evidence available;
 - HTML evidence available;
-- PDF evidence available.
+- PDF evidence available; and
+- External Evidence Check configured when the Tavily secret is present.
 
-After deploying External Evidence Check, `/health` should also expose its configuration status.
+A health response showing that Nebius or Tavily is configured proves configuration presence only. It does not prove that an upstream runtime call succeeded.
 
-A health response indicating that a provider is configured only confirms that required configuration is present. It does not prove that an upstream API request succeeded.
+Real Nebius, Tavily, and adaptive-routing behavior must be verified separately.
 
-Real Nebius and Tavily runtime calls must be verified separately.
+## 11. Verify adaptive model routing
 
-## 11. Deploy the Frontend
+Direct Ultra smoke testing proves model access. This section proves the **routing path**.
+
+First, deploy the updated backend with both model IDs configured.
+
+Then create a model-assisted migration that produces multiple independent validator concerns. The repository includes:
+
+```text
+backend/tests/fixtures/ambiguous_migration.csv
+```
+
+Upload that fixture through the production UI or API and note its migration ID.
+
+Request the model profile through the normal workflow. Then inspect the proposal payload and the migration audit events.
+
+The proposal response should include routing metadata. The audit log should contain:
+
+```text
+model_routing_decided
+```
+
+Inspect the events without assuming a particular metadata shape:
+
+```bash
+MIGRATION_ID=YOUR_MIGRATION_ID
+
+curl -fsS \
+  "$BACKEND/api/migrations/$MIGRATION_ID/events" \
+  | jq
+```
+
+For a genuine escalation case, confirm that the event records the validator signals that caused escalation and that the selected second-pass model is:
+
+```text
+nvidia/Nemotron-3-Ultra-550b-a55b
+```
+
+Do not lower the routing threshold merely to make the fixture escalate. If the real Super proposal produces fewer than two validator concerns, inspect the actual validation output first. The routing policy should follow real validator semantics rather than a demo-specific expectation.
+
+Also verify a routine model-assisted migration. It should remain on Super.
+
+Finally, test the fallback:
+
+1. remove `NEBIUS_ESCALATION_MODEL_ID` in a local or temporary environment;
+2. confirm the model-assisted workflow still works with Super only; and
+3. confirm the routing record states that escalation was unavailable rather than pretending no signal occurred.
+
+Only after a real deployed migration triggers the Ultra path should the adaptive routing feature be described as **production-verified end to end**.
+
+## 12. Deploy the frontend
 
 Link the repository to Vercel:
 
@@ -420,17 +546,17 @@ vercel --prod
 
 Anything prefixed with `NEXT_PUBLIC_` is visible to browser users.
 
-Never place:
+Never place any of the following inside a `NEXT_PUBLIC_*` variable:
 
-- Nebius API keys;
-- Tavily API keys;
-- database passwords;
-- cloud credentials;
-- private access tokens;
+- Nebius API keys
+- Tavily API keys
+- database passwords
+- cloud credentials
+- private access tokens
 
-inside a `NEXT_PUBLIC_*` variable.
+The model IDs themselves are not secrets, but the frontend does not need them to call Nebius directly because all inference remains server-side.
 
-## 12. CORS
+## 13. CORS
 
 The backend must allow the deployed Vercel origin:
 
@@ -442,7 +568,7 @@ After changing CORS configuration, redeploy the backend.
 
 Without the correct CORS origin, the browser can reach the public API over the network while still refusing frontend requests.
 
-## 13. Runtime Limits
+## 14. Runtime limits and routing controls
 
 Important runtime limits include:
 
@@ -450,18 +576,21 @@ Important runtime limits include:
 | --- | --- | --- |
 | Upload size | `MAX_UPLOAD_BYTES` | 25 MB |
 | Rows sampled for model reasoning | `MODEL_SAMPLE_ROWS` | 5 |
+| Primary reasoning model | `NEBIUS_MODEL_ID` | `nvidia/nemotron-3-super-120b-a12b` |
+| Escalation reasoning model | `NEBIUS_ESCALATION_MODEL_ID` | `nvidia/Nemotron-3-Ultra-550b-a55b` |
+| Escalation policy | deterministic validator concerns | escalate at two or more concerns |
 | External evidence timeout | `TAVILY_TIMEOUT_SECONDS` | 20 seconds |
 | External evidence results | `TAVILY_MAX_RESULTS` | 5 |
-| Request timeout | Cloud Run configuration | deployment-defined |
-| Cloud Run concurrency | Cloud Run configuration | deployment-defined |
-| Maximum Cloud Run instances | Cloud Run configuration | deployment-defined |
+| Request timeout | Cloud Run `timeoutSeconds` | 300 seconds |
+| Cloud Run concurrency | `containerConcurrency` | 20 |
+| Maximum Cloud Run instances | `maxScale` | 4 |
 | File retention | Cloud Storage lifecycle | policy-defined |
 
-External Evidence Check does not send full datasets, uploaded files, or raw spreadsheet rows to Tavily.
+Both model passes use the same bounded sample path. Selective escalation does not increase the number of source rows sent to the model.
 
-Its server-side query builder accepts only approved metadata required to investigate the semantic question.
+External Evidence Check does not send full datasets, uploaded files, sampled model rows, or raw spreadsheet values to Tavily. Its server-side query builder accepts only approved metadata required to investigate the semantic question.
 
-## 14. Verified CSV Export
+## 15. Verified CSV export
 
 MoveProof exposes two different classes of output.
 
@@ -497,7 +626,7 @@ CSV is a verified data output.
 
 JSON, HTML, and PDF are audit/evidence outputs.
 
-## 15. External Evidence Check
+## 16. External Evidence Check
 
 External Evidence Check is designed for semantic questions that cannot always be answered from the dataset alone.
 
@@ -520,18 +649,18 @@ It does not:
 - change an approved plan;
 - automatically approve a review;
 - change `Passed`, `Failed`, `Review required`, or `Not verified`;
-- bypass a commit gate;
+- bypass a commit gate; or
 - write destination rows.
 
 External evidence supports human review.
 
 It is not a deterministic verification result.
 
-## 16. Verify the Tavily Runtime Call
+## 17. Re-verify the Tavily runtime call
 
-After migration `003` is applied, the Tavily secret exists, and the new Cloud Run revision is active, create or use an existing migration in the workspace.
+External Evidence Check has already been production-verified, but this procedure is useful after credential rotation or a backend revision.
 
-Resolve the backend URL:
+Resolve the backend URL if needed:
 
 ```bash
 BACKEND=$(gcloud run services describe moveproof-backend \
@@ -540,11 +669,15 @@ BACKEND=$(gcloud run services describe moveproof-backend \
   --format='value(status.url)')
 ```
 
-Then run an External Evidence Check using a real migration ID:
+Use an existing migration in the workspace:
 
 ```bash
 MIGRATION_ID=YOUR_MIGRATION_ID
+```
 
+Then run a real External Evidence Check:
+
+```bash
 curl -fsS \
   -X POST \
   "$BACKEND/api/migrations/$MIGRATION_ID/external-evidence" \
@@ -554,7 +687,8 @@ curl -fsS \
     "destination_column": "customer_id",
     "question": "leading_zeros",
     "proposed_operation": "cast_to_integer"
-  }'
+  }' \
+  | jq
 ```
 
 A successful response should identify:
@@ -563,13 +697,13 @@ A successful response should identify:
 provider: tavily
 ```
 
-and return the normalized advisory-evidence structure.
+and return normalized advisory sources.
 
-A successful HTTP response alone does not establish that every source is authoritative. The interface exposes source identity and URLs so a human can judge the evidence.
+A successful HTTP response does not establish that every returned source is authoritative. The interface exposes source identity and URLs so a human can judge source quality.
 
 The response must never contain `TAVILY_API_KEY`.
 
-## 17. Delete and Rollback Behavior
+## 18. Delete and rollback behavior
 
 Deletion and rollback are deliberately separate actions.
 
@@ -595,7 +729,7 @@ If rollback fails, deletion is not attempted.
 
 Application deployment rollback and data migration rollback are separate operations.
 
-## 18. Production Verification Workflow
+## 19. Production verification workflow
 
 The core production workflow has already been exercised successfully:
 
@@ -622,21 +756,31 @@ The core production workflow has already been exercised successfully:
 
 The intentional failure path uses the deterministic legacy profile.
 
-Live Nebius inference has been verified separately using the production NVIDIA model.
+Live Nebius inference has been verified separately with the Super model.
 
-External Evidence Check should be verified separately after Tavily is activated in Cloud Run.
+Direct Token Factory access to the Ultra model has also been verified separately.
 
-## 19. Local Validation Before Deployment
+Tavily External Evidence Check has been verified through a real production runtime call.
 
-Before deploying the Tavily-enabled revision:
+Adaptive Super-to-Ultra routing still requires one deployed end-to-end escalation check after the new revision is deployed.
+
+## 20. Local validation before deployment
+
+After merging the adaptive-routing changes, run the backend suite from `backend/`:
 
 ```bash
-cd backend
 source .venv/bin/activate
 
 make migrate
 make test-core
 make test-db
+pytest tests/test_model_routing.py -v
+```
+
+If the full runnable suite is available in the local environment, run it as well:
+
+```bash
+pytest -v
 ```
 
 Then, from the repository root:
@@ -644,26 +788,30 @@ Then, from the repository root:
 ```bash
 npm run typecheck
 npm run lint
+rm -rf .next
 npm run build
+git diff --check
 ```
 
-Do not deploy if the database migration or required test suites fail.
+Do not deploy if required database migrations, backend tests, routing tests, frontend type checking, or the production build fail.
 
-Mocked Tavily tests prove application behavior around the provider boundary.
+Mocked model-routing tests prove the routing rule and safety boundaries. They do not replace a real deployed Super-to-Ultra escalation test.
 
-They do not replace a real production Tavily runtime test.
+Mocked Tavily tests prove application behavior around the provider boundary. They do not replace a real provider runtime check.
 
-## 20. Cost Controls
+## 21. Cost controls
 
 Actual costs depend on provider pricing, usage, region, account configuration, promotions, and credits.
 
 At demonstration scale:
 
-- Cloud SQL is generally the most persistent infrastructure cost;
-- Cloud Run usage is typically small;
-- Cloud Storage usage is typically small;
-- Nebius Token Factory usage depends on token consumption;
-- Tavily usage depends on the provider plan and number of External Evidence Checks.
+- Cloud SQL is generally the most persistent infrastructure cost.
+- Cloud Run usage is typically small because the service scales to zero.
+- Cloud Storage usage is typically small.
+- Nebius Token Factory usage depends on token consumption.
+- Nemotron 3 Super handles routine model-assisted proposals.
+- Nemotron 3 Ultra is called only when deterministic validation detects two or more concerns, reducing unnecessary use of the larger reasoning model.
+- Tavily usage depends on the provider plan and the number of External Evidence Checks.
 
 These are operational observations, not pricing guarantees.
 
@@ -684,14 +832,15 @@ Do not stop production infrastructure while judges or reviewers are expected to 
 
 No GPU is provisioned in the MoveProof Google Cloud deployment. NVIDIA model inference is provided through Nebius Token Factory.
 
-## 21. Application Deployment Rollback
+## 22. Application deployment rollback
 
 Inspect Cloud Run revisions:
 
 ```bash
 gcloud run revisions list \
   --service=moveproof-backend \
-  --region="$GCP_REGION"
+  --region="$GCP_REGION" \
+  --project="$GCP_PROJECT_ID"
 ```
 
 Route traffic back to an earlier revision:
@@ -699,6 +848,7 @@ Route traffic back to an earlier revision:
 ```bash
 gcloud run services update-traffic moveproof-backend \
   --region="$GCP_REGION" \
+  --project="$GCP_PROJECT_ID" \
   --to-revisions=PREVIOUS_REVISION=100
 ```
 
@@ -706,31 +856,42 @@ Rolling Cloud Run back to an earlier application revision does not undo data alr
 
 Migration rollback must be performed explicitly through MoveProof.
 
-## 22. Production Readiness Checklist
+If an adaptive-routing deployment has an operational problem, rolling back to the previous Cloud Run revision also removes the new routing configuration from the active service while leaving committed migration data untouched.
 
-Before treating the Tavily-enabled deployment as fully verified, confirm:
+## 23. Production readiness checklist
+
+Before treating the current deployment as fully verified after the adaptive-routing update, confirm:
 
 1. The Vercel production URL loads successfully.
 2. The frontend uses the correct Cloud Run backend.
 3. `/health` reports PostgreSQL connected.
 4. `/health` reports the Rust verifier available.
 5. JSON, HTML, and PDF evidence capabilities are available.
-6. A real Nebius Token Factory inference request succeeds.
-7. The production model is `nvidia/nemotron-3-super-120b-a12b`.
-8. Database migrations include `003_evidence_events.sql`.
-9. `tavily-api-key` exists in Secret Manager.
-10. Cloud Run receives the Tavily secret without exposing it publicly.
-11. A real External Evidence Check returns normalized Tavily advisory sources.
-12. No Tavily credential appears in the response or audit metadata.
-13. Running External Evidence Check does not change verification state.
-14. Running External Evidence Check does not change commit eligibility.
-15. Upload, staging, verification, repair, and commit still work.
-16. Verified CSV preserves leading-zero identifiers.
-17. Committed migrations require explicit rollback before deletion.
-18. Frontend typecheck, lint, and build complete successfully.
-19. Backend core and database/API suites are green.
-20. GitHub CI is green.
+6. A real Super inference request succeeds through Nebius Token Factory.
+7. Direct runtime access to `nvidia/Nemotron-3-Ultra-550b-a55b` succeeds.
+8. `NEBIUS_BASE_URL` is `https://api.tokenfactory.nebius.com/v1`.
+9. `NEBIUS_MODEL_ID` is `nvidia/nemotron-3-super-120b-a12b`.
+10. `NEBIUS_ESCALATION_MODEL_ID` is `nvidia/Nemotron-3-Ultra-550b-a55b`.
+11. A routine model-assisted migration remains on Super.
+12. A real ambiguous model-assisted migration with at least two validator concerns triggers Ultra.
+13. The `model_routing_decided` audit event records the routing decision.
+14. Removing the escalation model ID returns the application to safe Super-only behavior.
+15. An escalation-provider failure does not grant execution, approval, verification, or commit authority.
+16. Database migrations include `003_evidence_events.sql`.
+17. `tavily-api-key` exists in Secret Manager.
+18. Cloud Run receives the Tavily secret without exposing it publicly.
+19. A real External Evidence Check returns normalized Tavily advisory sources.
+20. No Tavily credential appears in the response or audit metadata.
+21. Running External Evidence Check does not change verification state.
+22. Running External Evidence Check does not change commit eligibility.
+23. Upload, staging, verification, repair, and commit still work.
+24. Verified CSV preserves leading-zero identifiers.
+25. Committed migrations require explicit rollback before deletion.
+26. Frontend type checking, linting, and build complete successfully.
+27. Backend core, database/API, and routing suites are green.
+28. `git diff --check` is clean.
+29. GitHub CI is green.
 
-The core MoveProof production stack is already deployed and verified.
+The core MoveProof production stack and Tavily External Evidence Check are already verified.
 
-The Tavily-powered External Evidence Check should only be described as production-verified after its real deployed runtime check succeeds.
+The adaptive reasoning escalation feature should only be described as **production-verified end to end** after items 11 through 15 have been exercised against the deployed revision.

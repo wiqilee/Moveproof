@@ -67,6 +67,18 @@ class NebiusClient:
     def __init__(self, config: NebiusConfig | None = None) -> None:
         self.config = config or NebiusConfig.from_env()
 
+    @classmethod
+    def for_model(cls, model_id: str) -> "NebiusClient":
+        """A client pinned to one model, sharing the configured credential.
+
+        Used by the escalation path so a deeper proposal reaches a different
+        model over the same authenticated boundary. Only the model id differs;
+        the key, the base URL and the JSON-only contract are unchanged.
+        """
+        from dataclasses import replace
+
+        return cls(replace(NebiusConfig.from_env(), model_id=model_id))
+
     def _headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self.config.api_key}",

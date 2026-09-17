@@ -1,0 +1,6 @@
+acct_ref,effective_date,status,amount,country_code
+00127-A,03/04/2024,A,"1,250.00",ID
+00128-A,04/03/2024,01,"1250,00",ID
+127,2024-04-03,ACTIVE,1250,Indonesia
+00129-B,12/05/2024,I,"980,40",SG
+0130,2024-05-12,INACTIVE,"1,004.05",Singapore

@@ -1,0 +1,5 @@
+customer_id,full_name,email,signup_date,balance,region
+00501,Ratna Wijaya,ratna.wijaya@example.com,2024-05-02,820.00,APAC
+00502,Tomas Nyberg,tomas.nyberg@example.com,2024-05-03,1435.50,EMEA
+00503,Grace Okonkwo,grace.okonkwo@example.com,2024-05-06,265.75,EMEA
+00504,Hiroshi Tanaka,hiroshi.tanaka@example.com,2024-05-07,3110.20,APAC

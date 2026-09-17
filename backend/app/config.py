@@ -90,6 +90,25 @@ class Settings:
         )
 
     @property
+    def nebius_model_id(self) -> str:
+        """The default reasoning model. Routine migrations stay here."""
+        return os.environ.get("NEBIUS_MODEL_ID", "").strip()
+
+    @property
+    def nebius_escalation_model_id(self) -> str:
+        """The deeper reasoning model, or empty when none is configured.
+
+        Backend only, like every other credential-adjacent setting. Absent by
+        default on purpose: with nothing set, MoveProof behaves exactly as it
+        did before escalation existed.
+        """
+        return os.environ.get("NEBIUS_ESCALATION_MODEL_ID", "").strip()
+
+    @property
+    def nebius_escalation_configured(self) -> bool:
+        return bool(self.nebius_escalation_model_id) and self.nebius_configured
+
+    @property
     def tavily_configured(self) -> bool:
         """Whether a credential is present.
 
