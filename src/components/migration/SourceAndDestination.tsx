@@ -63,9 +63,9 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
     <div>
       <Stepper steps={WIZARD_STEPS} current={0} />
       <StepIntro
-        title="Upload your source file"
-        description="CSV or XLSX, up to 25 MB. The file is parsed by the backend and the original bytes are stored, so a repair can always return to the source."
-      />
+  title="Upload your source file"
+  description="CSV, TSV, XLSX, or XLSM, up to 25 MB. The file is parsed by the backend and the original bytes are stored, so a repair can always return to the source."
+/>
 
       <div
         onDragOver={(event: DragEvent<HTMLDivElement>) => {
@@ -81,7 +81,7 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
       >
         <Upload size={22} className="mx-auto mb-3 text-ink-soft" aria-hidden />
         <p className="text-sm font-semibold">Drop a spreadsheet here</p>
-        <p className="mt-1 text-xs text-ink-soft">CSV, TSV, XLSX or XLSM</p>
+        <p className="mt-1 text-xs text-ink-soft">CSV, TSV, XLSX, or XLSM</p>
         <input
           ref={inputRef}
           type="file"

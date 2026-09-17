@@ -37,8 +37,8 @@ export default function SettingsPage() {
       label: "Nebius Token Factory",
       available: health?.nebius.configured ?? false,
       detail:
-        health?.nebius.note ??
-        "Needed only for the model assisted mapping profile.",
+  health?.nebius.note ??
+  "Used for model-assisted planning and selective reasoning escalation when configured.",
     },
     {
       label: "External Evidence Check",
@@ -144,11 +144,13 @@ export default function SettingsPage() {
               </dd>
             </div>
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <dt className="text-ink-soft">Rows sent to the model</dt>
-              <dd className="font-mono text-xs">
-                {health ? health.limits.model_sample_rows : "unknown"}
-              </dd>
-            </div>
+  <dt className="text-ink-soft">
+    Maximum sampled rows for model reasoning
+  </dt>
+  <dd className="font-mono text-xs">
+    {health ? health.limits.model_sample_rows : "unknown"}
+  </dd>
+</div>
           </dl>
           <p className="mt-3 border-t border-line pt-3 text-xs leading-relaxed text-ink-soft">
             Change the API URL with NEXT_PUBLIC_API_BASE_URL. The other limits

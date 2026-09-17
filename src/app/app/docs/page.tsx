@@ -53,12 +53,17 @@ export default function DocsPage() {
             review item, approving a repair, and committing.
           </p>
           <p>
-  A model proposes the mapping. Validated code executes exactly what
-  you approved. An independent verifier decides what actually
-  happened. You approve anything ambiguous. When field semantics are
-  unclear, External Evidence Check can retrieve advisory public
-  references to help inform that decision without changing
-  verification or commit eligibility.
+          <p>
+  Nemotron 3 Super proposes the initial mapping. MoveProof then validates
+  that proposal deterministically. When the validator detects multiple
+  independent concerns, the same bounded context may be selectively
+  escalated to Nemotron 3 Ultra for deeper reasoning. Validated code
+  executes exactly what you approved. An independent verifier determines
+  what actually happened, and you approve anything ambiguous. When field
+  semantics are unclear, External Evidence Check can retrieve advisory
+  public references to help inform that decision without changing
+  verification results or commit eligibility.
+</p>
 </p>
         </Section>
 
@@ -139,21 +144,62 @@ export default function DocsPage() {
           </p>
         </Section>
 
-        <Section title="What is sent to the model">
+        <Section title="Model reasoning and data boundaries">
   <p>
-    Only a summary of the schema and a small sample of rows, the size
-    of which is shown in Settings. Full datasets are never sent to the
-    model. The model never emits SQL, shell commands or executable code,
-    and every proposal is validated against an allowlist of supported
-    operations before a human or the executor sees it.
+    Only a summary of the schema and a small bounded sample of rows, the
+    size of which is shown in Settings, can enter model-assisted reasoning.
+    Full datasets are never sent to the model. Both the routine and
+    escalation passes use the same bounded sampling path rather than
+    sending additional rows to the deeper reasoning model.
   </p>
+
   <p>
-    The model-assisted profile uses an NVIDIA model served through
-    Nebius Token Factory. Two deterministic profiles remain available
-    without live model credentials, keeping the core migration and
-    verification workflow reproducible in local and test environments.
+    Nemotron 3 Super, served through Nebius Token Factory, handles the
+    initial model-assisted planning pass. Its output is treated as
+    untrusted input and validated deterministically against the supported
+    operation allowlist.
+  </p>
+
+  <p>
+    The model never emits SQL, shell commands, or executable code. Two
+    deterministic profiles also remain available without live model
+    credentials, keeping the core migration and verification workflow
+    reproducible in local and test environments.
   </p>
 </Section>
+
+
+<Section title="Selective reasoning escalation">
+  <p>
+    MoveProof does not ask the model whether it needs a more powerful
+    model. The routing decision is made by deterministic validation of the
+    initial Super proposal.
+  </p>
+
+  <p>
+    A validator concern is something MoveProof already knows how to detect,
+    such as a mapping that requires explicit acknowledgement or a
+    non-fatal validation issue. If fewer than two concerns are detected, MoveProof keeps the Super proposal.
+    Two or more concerns can trigger a second reasoning pass
+    with Nemotron 3 Ultra when escalation is configured.
+  </p>
+
+  <p>
+    The Ultra pass receives the same bounded model context and remains
+    subject to the same parsing, allowlist validation, human approval, and
+    execution gates as the initial proposal. Escalation does not grant the
+    model authority to execute transformations, approve a plan, change a
+    verification result, or commit destination data.
+  </p>
+
+  <p>
+    If the escalation model is not configured, MoveProof continues with
+    the validated Super proposal. If an escalation request fails, the
+    Super proposal remains available and the failure is recorded rather
+    than granting additional authority.
+  </p>
+</Section>
+
 
 <Section title="External Evidence Check">
   <p>

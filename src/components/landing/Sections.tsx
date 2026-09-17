@@ -76,8 +76,8 @@ const STAGES = [
   },
   {
     title: "Approve the plan",
-    body: "In the model-assisted profile, an NVIDIA model proposes a typed mapping and flags uncertainty. For ambiguous fields, reviewers can pull metadata-only references through Tavily. The sources stay advisory and never affect verification or commit eligibility.",
-    detail: "Plan v1 · 7 operations · 2 review required",
+    body: "In the model-assisted profile, Nemotron 3 Super proposes the mapping, and deterministic validation can selectively escalate harder cases to Nemotron 3 Ultra using the same bounded context. Tavily can provide metadata-only references for ambiguous fields, but those sources remain advisory and never affect verification or commit eligibility.",
+    detail: "Plan v1 · 7 operations · 2 review items",
   },
   {
     title: "Verify the staged result",
@@ -256,10 +256,11 @@ export function Technology() {
               commit is allowed.
             </p>
             <p className="mt-4 max-w-md text-[15px] leading-relaxed text-ink-soft">
-              Inference runs on the NVIDIA open-source model nvidia/nemotron-3-super-120b-a12b,
-              served through Nebius Token Factory. Full datasets are never sent to the model;
-              only a schema summary and a small sample of rows are used for model-assisted reasoning.
-            </p>
+  Model-assisted reasoning runs through Nebius Token Factory. Nemotron 3 Super
+  handles the initial planning pass, while deterministic validation can selectively
+  escalate harder cases to Nemotron 3 Ultra. Both passes use the same bounded context:
+  a schema summary and a small sample of rows. Full datasets are never sent to either model.
+</p>
           </div>
 
           <div className="rounded-card border border-line bg-surface p-6">

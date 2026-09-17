@@ -41,8 +41,8 @@ export function Hero() {
             </div>
 
             <p className="mt-6 text-xs leading-relaxed text-ink-soft">
-            The preview on this page is synthetic. Live migrations in the workspace use the deployed backend, database, verifier, and configured AI model.
-            </p>
+  The preview on this page is synthetic. Live migrations in the workspace use the deployed backend, database, verifier, and configured model routing.
+</p>
           </div>
 
           <div>
