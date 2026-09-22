@@ -2,9 +2,13 @@
 
 <img src="public/logo.svg" alt="MoveProof" width="300" />
 
+# MoveProof
+
 ### Move data. Prove what changed.
 
-An AI-assisted data migration workspace that verifies its own work and shows you the evidence.
+MoveProof is a verification-first workspace for high-stakes structured-data migrations. AI may propose transformations, but only validated and human-approved plans can execute, and independent verification determines whether the migration actually preserved the intended contract.
+
+**AI proposes. Validated code executes. Independent evidence decides. Humans approve ambiguity.**
 
 [![CI](https://github.com/wiqilee/Moveproof/actions/workflows/ci.yml/badge.svg)](https://github.com/wiqilee/Moveproof/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-172554.svg)](LICENSE)
@@ -14,12 +18,17 @@ An AI-assisted data migration workspace that verifies its own work and shows you
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1.svg)](https://www.postgresql.org)
 [![Rust](https://img.shields.io/badge/Rust-2021-B45309.svg)](https://www.rust-lang.org)
 [![Nebius](https://img.shields.io/badge/Nebius-Token_Factory-5B5BD6.svg)](https://nebius.com)
-[![NVIDIA](https://img.shields.io/badge/NVIDIA-Nemotron-76B900.svg)](https://www.nvidia.com)
+[![NVIDIA](https://img.shields.io/badge/NVIDIA-Nemotron_Super_+_Ultra-76B900.svg)](https://www.nvidia.com)
 [![Tavily](https://img.shields.io/badge/Tavily-External_Evidence-2563EB.svg)](https://tavily.com)
+[![YouTube Demo](https://img.shields.io/badge/YouTube-Demo_Video-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=REPLACE_WITH_DEMO_ID)
 
-[Live app](https://moveproof-wiqi.vercel.app) · [Demo video](https://youtube.com/watch?v=REPLACE_WITH_DEMO_ID) · [Devpost entry](https://devpost.com/software/moveproof) · [Hackathon](https://nebiusglobalaihackathon.devpost.com/)
+[Live app](https://moveproof-wiqi.vercel.app) · [Backend health](https://moveproof-backend-579259634424.asia-southeast2.run.app/health) · [Devpost entry](https://devpost.com/software/moveproof) · [Hackathon](https://nebiusglobalaihackathon.devpost.com/)
 
-Built by [Wiqi Lee](https://x.com/wiqi_lee) for the Nebius x NVIDIA Global AI Hackathon 2026.
+Built by [Wiqi Lee](https://x.com/wiqi_lee) for the Nebius x NVIDIA Global AI Hackathon 2026 · Track: **Best Apps & Agents**
+
+NVIDIA Nemotron 3 Super on Nebius Token Factory drafts every model-assisted proposal. Nemotron 3 Ultra is called selectively, only when deterministic validation finds interacting ambiguities. Neither model can execute anything.
+
+*Demo video: to be published before final submission.*
 
 </div>
 
@@ -30,6 +39,8 @@ Built by [Wiqi Lee](https://x.com/wiqi_lee) for the Nebius x NVIDIA Global AI Ha
 - [The problem](#the-problem)
 - [What MoveProof does](#what-moveproof-does)
 - [Why MoveProof](#why-moveproof)
+- [How it works](#how-it-works)
+- [Selective NVIDIA reasoning](#selective-nvidia-reasoning)
 - [Honest status](#honest-status)
 - [Quick start](#quick-start)
 - [Running the whole stack](#running-the-whole-stack)
@@ -88,7 +99,9 @@ MoveProof separates those questions: **what was approved, what actually happened
 
 ## What MoveProof does
 
-Spreadsheet data goes into a structured database. In the model-assisted profile, an NVIDIA model proposes a typed transformation plan; deterministic proposal profiles are also available. Validated deterministic code executes the approved plan, and an independent verifier checks the staged result.
+Spreadsheet data goes into a structured database. In the model-assisted profile, an NVIDIA Nemotron model proposes a typed transformation plan; deterministic proposal profiles are also available and need no credential at all. Validated deterministic code executes the approved plan, and an independent verifier checks the staged result.
+
+MoveProof is not a generic ETL tool, and it is not an agent permitted to mutate production data on its own judgement. It is a verification layer for migrations where silent semantic damage matters.
 
 ## Why MoveProof
 
@@ -101,13 +114,11 @@ It adds four things that ordinary import success does not prove:
 - **Human control over ambiguity.** Unclear semantics are surfaced for review instead of guessed silently.
 - **Evidence that survives the run.** Plans, approvals, checks, repairs, limitations, and final outcomes remain part of the audit record.
 
-The goal is not to replace ETL systems. It is to add a verification layer around migrations where silent semantic damage matters.
-
 > **AI proposes. Validated code executes. Independent evidence decides. Humans approve ambiguity.**
 
 Each clause is a constraint in the codebase, not just a slogan.
 
-**AI proposes.** An NVIDIA model served through Nebius Token Factory reads the source schema and a five-row sample, then returns a typed mapping proposal. It never emits SQL, shell commands, or executable code.
+**AI proposes.** An NVIDIA model served through Nebius Token Factory reads the source schema and a bounded row sample, then returns a typed mapping proposal. It never emits SQL, shell commands, or executable code.
 
 **Validated code executes.** Every proposed operation is checked against an allowlist before it can be approved. `approve()` accepts a validation result rather than a raw plan, so a proposal cannot become executable merely by calling an approval function on it. Lossy operations require an acknowledgement recorded for the affected column by name. The executor also refuses plans whose mappings are not explicitly approved, closing the path where a caller constructs an approved-looking plan by hand.
 
@@ -123,13 +134,123 @@ Human approvals recorded in a report are audit entries. They are not cryptograph
 
 ---
 
+## How it works
+
+One migration, eight stages. Human control remains explicit at every decision point.
+
+| Stage | Who acts | What is produced |
+| --- | --- | --- |
+| Upload | Operator | Original bytes stored with a checksum |
+| Propose | Nemotron, or a deterministic profile | A typed mapping plan |
+| Validate | Deterministic code | Allowlist result, issues, acknowledgement requirements |
+| Approve | Human | An immutable plan version with acknowledgements by column |
+| Stage | Deterministic executor | Rows in an isolated staging schema |
+| Verify | Independent verifier | Passed / failed / review required / not verified |
+| Repair | Human approves a new plan version | A rerun from the original bytes, never from damaged output |
+| Commit | Human, subject to the database gate | Destination rows plus a canonical evidence object |
+
+No stage can be skipped by a model, and no stage can be skipped by a screen. The commit gate is re-checked in the database layer against stored check results.
+
+---
+
+## Selective NVIDIA reasoning
+
+Most migrations are not hard. A column called `email` mapping to `email` is not a reasoning problem, and routing every one of them to the largest available model would cost more and take longer without interpreting anything better.
+
+Some migrations are genuinely harder. When one file carries an identifier whose format is in doubt (`00127-A` beside `127`), a date that reads two ways (`03/04/2024`), a status encoded three ways (`A`, `01`, `ACTIVE`) and an amount whose decimal separator is locale-dependent (`1,250.00` beside `1250,00`), those ambiguities interact: how you read one constrains how you should read another.
+
+MoveProof therefore uses two Nemotron models, with deterministic software deciding which one drafts the proposal.
+
+| Role | Model ID | When it runs |
+| --- | --- | --- |
+| Default | `nvidia/nemotron-3-super-120b-a12b` | Every model-assisted proposal starts here |
+| Escalation | `nvidia/Nemotron-3-Ultra-550b-a55b` | Only when validation finds two or more interpretation concerns |
+
+```mermaid
+flowchart TB
+    IN["Schema summary + bounded row sample<br/>(MODEL_SAMPLE_ROWS, currently 5)"]
+    SUPER["Nemotron 3 Super<br/>nvidia/nemotron-3-super-120b-a12b"]
+    V1["Deterministic validation"]
+    R{"Routing decision<br/>concerns >= 2 ?"}
+    KEEP["Super proposal stands"]
+    ULTRA["Nemotron 3 Ultra<br/>nvidia/Nemotron-3-Ultra-550b-a55b"]
+    V2["Deterministic validation"]
+    H["Human acknowledgement and approval"]
+    EX["Deterministic executor"]
+    VER["Independent verifier"]
+
+    IN --> SUPER --> V1 --> R
+    R -->|no| KEEP --> H
+    R -->|yes, same bounded input| ULTRA --> V2 --> H
+    H --> EX --> VER
+```
+
+Neither model reaches the executor. Both produce a proposal, which is data.
+
+### What counts as a concern
+
+The routing decision is made **after** the first proposal has been validated, so it reads facts the validator computed rather than anything the model asserted about itself. A *concern* is one of two things:
+
+- a mapping that requires acknowledgement by name, which is the domain's own marker for a lossy transformation
+- a non-fatal validation issue, the validator saying a mapping is legal but questionable
+
+**Two or more concerns in one plan escalates. Fewer does not.** One concern is an ordinary migration and the acknowledgement gate already covers it; the leading-zero demonstration is exactly that case, and it deliberately does not escalate.
+
+Two things are deliberately absent. There is **no confidence score**: the model reply schema has no such field, and inventing a number purely to drive routing would make the decision unexplainable in the one place it must be explainable. And **dataset size is never a signal** — a million clean rows are easy, fifty messy ones are hard. The decision function has no access to a row count.
+
+The implementation is `backend/app/services/routing.py`. The model does not choose whether it gets escalated.
+
+### The escalation model gains no authority
+
+Ultra cannot execute SQL, shell commands or Python; mutate migration state; approve its own plan; bypass acknowledgement; change a check result; alter commit eligibility; or touch the verifier. `routing.py` imports no repository, no database driver and no executor, and a test asserts that.
+
+**Model capability may increase, but model authority does not.**
+
+### Same bounded input for both passes
+
+Escalation buys deeper reasoning, never a wider view of the data. Both passes receive the schema summary and at most `MODEL_SAMPLE_ROWS` rows, currently 5 in production. The limit is enforced in one function, `pipeline._sample_for_model`, and a test asserts it appears exactly once.
+
+### Fallback
+
+- If `NEBIUS_ESCALATION_MODEL_ID` is absent, the validated Super proposal stands and the routing signal is still recorded, rather than silently pretending nothing was noticed.
+- If the Ultra request fails, the validated Super proposal stands and the failure reason is recorded.
+
+Verification and commit safety never depend on the escalation model being reachable.
+
+### Auditability
+
+Each model-assisted proposal writes a `model_routing_decided` event carrying the default model ID, the selected model ID, whether escalation occurred, and the deterministic reasons. No row values are written to justify a routing decision, and no credential appears.
+
+A reviewer can answer "why did this migration use the larger model" without reading backend code.
+
+### Verification status
+
+These claims are kept separate because they are established by different means.
+
+| Claim | Status | Evidence |
+| --- | --- | --- |
+| Routing implementation | **Verified** | `pytest tests/test_model_routing.py -v`, 18 passed |
+| Routing safety boundary | **Verified** | The same suite asserts escalation cannot bypass validation, human approval, verification, or the commit gate |
+| Broader backend suite, non-database | **Verified** | 153 passed, 1 skipped |
+| Routing-capable backend deployed | **Verified** | Running on Cloud Run |
+| Super configured in production | **Verified** | `NEBIUS_MODEL_ID` set on the deployed revision |
+| Ultra configured in production | **Verified** | `NEBIUS_ESCALATION_MODEL_ID` set on the deployed revision |
+| Direct Nemotron Super runtime access | **Verified** | A real Nebius Token Factory request succeeded against `nvidia/nemotron-3-super-120b-a12b` |
+| Direct Nemotron Ultra runtime access | **Verified** | A real Nebius Token Factory request succeeded against `nvidia/Nemotron-3-Ultra-550b-a55b`, in a separate run |
+| Tavily External Evidence Check | **Verified in production** | A real deployed request returned advisory sources |
+| Deployed end-to-end automatic escalation | **Pending** | No production migration has yet produced two or more concerns and triggered the second pass |
+
+Reaching Ultra directly proves the model is available over the configured endpoint. It does not prove the routing rule fires on a real upload, and this README does not claim otherwise until a deployed run has taken the path `Super → validator finds two or more concerns → Ultra → model_routing_decided`.
+
+---
+
 ## Honest status
 
-MoveProof distinguishes between implemented, tested, and externally integrated functionality. That distinction matters for a product built around verifiable claims.
+MoveProof distinguishes between implemented, tested, deployed, and end-to-end verified functionality. That distinction matters for a product built around verifiable claims.
 
 | Component | Implemented | Verification status | How to verify it |
 | --- | --- | --- | --- |
-| CSV and XLSX parsing | Yes | **Verified** | `make test-core` |
+| CSV, TSV, XLSX and XLSM parsing | Yes | **Verified** | `make test-core` |
 | Plan validation and operation allowlist | Yes | **Verified** | `make test-core` |
 | Approval gates and negative cases | Yes | **Verified** | `make test-core` |
 | Deterministic executor | Yes | **Verified** | `make test-core` |
@@ -138,6 +259,7 @@ MoveProof distinguishes between implemented, tested, and externally integrated f
 | Python and Rust hashing parity | Yes | **Verified** | `make rust` then `make test-core` |
 | Synthetic generator and manifest | Yes | **Verified** | `make test-core` |
 | PDF and HTML rendering | Yes | **Verified** | `make test-core` |
+| Selective Super to Ultra routing | Yes | **Tested and deployed; production end-to-end escalation verification pending** | `pytest tests/test_model_routing.py -v`, then a production run that emits `model_routing_decided` with `escalated: true` |
 | PostgreSQL staging and commit gates | Yes | **Verified locally and in CI** | `make test-db` |
 | Idempotency and conflict handling | Yes | **Verified locally and in CI** | `make test-db` |
 | FastAPI endpoints and status taxonomy | Yes | **Verified locally and in CI** | `make test-db` |
@@ -145,7 +267,7 @@ MoveProof distinguishes between implemented, tested, and externally integrated f
 | Frontend type checking, linting, and build | Yes | **Verified in CI** | `npm run typecheck && npm run lint && npm run build` |
 | Verified CSV export | Yes | **Verified locally and in CI** | `make test-db` |
 | Frontend-to-backend workflow | Yes | **Verified in production** | Walk the demo on the deployed app |
-| Live Nebius Token Factory inference | Yes | **Verified live** | `make smoke` |
+| Live Nebius Token Factory inference | Yes | **Verified live** against both Super and Ultra, in separate runs | `make smoke` for the default model; rerun with `NEBIUS_MODEL_ID` overridden for Ultra |
 | External Evidence Check | Yes | **Verified in production** | Evidence tests plus a real deployed Tavily runtime check |
 | Production deployment | Yes | **Verified in production** | See [deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md) |
 
@@ -158,7 +280,7 @@ Current verification commands:
 - `npm run build`
 - `make rust-test`
 
-The production stack has passed its local, CI, and deployed workflow checks, including a real Tavily External Evidence Check.
+Latest backend run outside the database suite: **153 passed, 1 skipped**, including 18 routing tests. The single skip is the branch that only runs when the Rust binary is absent; it skips because the binary is present.
 
 ### Production
 
@@ -171,14 +293,17 @@ The core stack is deployed and the full browser workflow has been exercised end 
 | Database | Cloud SQL for PostgreSQL |
 | Private objects | Google Cloud Storage |
 | Canonical reconciliation | Rust verifier compiled into the backend container |
-| Inference | Nebius Token Factory, `nvidia/nemotron-3-super-120b-a12b` |
+| Default reasoning | Nebius Token Factory, `nvidia/nemotron-3-super-120b-a12b` |
+| Escalation reasoning | Nebius Token Factory, `nvidia/Nemotron-3-Ultra-550b-a55b`, configured and deployed; automatic escalation not yet exercised in production |
 | External evidence | Tavily External Evidence Check verified in production |
 
-The deployed `/health` endpoint reports PostgreSQL connected, Nebius configured, the Rust verifier available and PDF generation available. A real Token Factory request has succeeded against that model.
+The deployed `/health` endpoint reports status ok, PostgreSQL connected, Nebius configured, the Rust verifier available, JSON, HTML and PDF reports available, External Evidence Check available, and a model sample limit of 5 rows.
+
+The routing-capable backend revision is deployed, both model IDs are present in its configuration, and a direct Token Factory request to the escalation model has succeeded. What remains unverified is the automatic path: a production migration whose validated first proposal carries two or more concerns and therefore triggers the second pass.
 
 External Evidence Check is production-verified. Migration `003_evidence_events.sql` is applied, the Tavily credential is supplied to Cloud Run through Secret Manager, the updated revision is deployed, and a real production request returned advisory Tavily sources successfully without exposing the credential.
 
-The exercised path was upload, approval, staging, verification failure, repair, rerun, verification pass, commit, evidence report. The controlled legacy profile damaged all four zero-padded identifiers, the verifier failed both identifier preservation and canonical row reconciliation, the repair reran from the stored original bytes rather than the damaged staged integer, and the rerun passed with nine checks passed, zero failed, zero review required and two advisory checks reported as not verified. Four rows were committed with none skipped under the fail-closed policy. JSON, HTML and PDF evidence and the verified CSV export were all produced from the deployed backend.
+The exercised migration path was upload, approval, staging, verification failure, repair, rerun, verification pass, commit, evidence report. The controlled legacy profile damaged all four zero-padded identifiers, the verifier failed both identifier preservation and canonical row reconciliation, the repair reran from the stored original bytes rather than the damaged staged integer, and the rerun passed with nine checks passed, zero failed, zero review required and two advisory checks reported as not verified. Four rows were committed with none skipped under the fail-closed policy. JSON, HTML and PDF evidence and the verified CSV export were all produced from the deployed backend.
 
 That run was subsequently rolled back and deleted through the API, so the production workspace is empty again.
 
@@ -273,6 +398,16 @@ make smoke
 
 Independent of everything else. Run it the moment you have a credential rather than waiting for the rest of the stack. Without a key it exits with a clear message and code 2, and every other command still works.
 
+The smoke test does two things. It lists every model your account can reach, which confirms whether both model IDs exist in your catalogue. It then makes **one** real inference request, against `NEBIUS_MODEL_ID` only. It does not read `NEBIUS_ESCALATION_MODEL_ID`, so a single run does not exercise Ultra.
+
+To confirm Ultra inference as well, run it a second time with the model overridden:
+
+```bash
+NEBIUS_MODEL_ID=nvidia/Nemotron-3-Ultra-550b-a55b make smoke
+```
+
+Direct runtime access to both models has been verified this way, in two separate runs. The escalation model is optional: leaving `NEBIUS_ESCALATION_MODEL_ID` unset returns MoveProof to Super-only behaviour with no other change.
+
 ### Tavily External Evidence Check
 
 The core migration workflow does not require a Tavily credential. Without one, External Evidence Check disables itself while the rest of MoveProof continues to work.
@@ -285,8 +420,6 @@ export TAVILY_API_KEY='your-key'
 ```
 
 Never create `NEXT_PUBLIC_TAVILY_API_KEY`. Any variable with the `NEXT_PUBLIC_` prefix is bundled into browser-accessible code.
-
-A real production Tavily call should be verified only after the database migration, Secret Manager wiring, and updated Cloud Run revision are in place. See [deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md).
 
 ---
 
@@ -304,10 +437,11 @@ make bench       # measures Python against Rust reconciliation
 These are pytest markers underneath, so you can be more selective:
 
 ```bash
-pytest -v -m "not database"          # the core suite
-pytest -v -m database                # requires DATABASE_URL and PostgreSQL
-pytest tests/test_canonical.py -v    # canonicalisation and Rust parity
-pytest tests/test_reports.py -v      # PDF and HTML rendering
+pytest -v -m "not database"              # the core suite
+pytest -v -m database                    # requires DATABASE_URL and PostgreSQL
+pytest tests/test_canonical.py -v        # canonicalisation and Rust parity
+pytest tests/test_reports.py -v          # PDF and HTML rendering
+pytest tests/test_model_routing.py -v    # selective reasoning escalation
 ```
 
 ### What each suite covers
@@ -319,11 +453,12 @@ pytest tests/test_reports.py -v      # PDF and HTML rendering
 | `test_approval.py` | Negative cases: fatal validation, unacknowledged lossy casts, forged plans | Nothing |
 | `test_canonical.py` | Canonicalisation rules, and parity between Python and Rust | Rust for parity |
 | `test_reports.py` | Real PDF bytes, page count, HTML escaping, three formats agreeing | reportlab |
+| `test_model_routing.py` | Escalation triggers, fallback, audit metadata, and the authority boundary | Nothing; inference is mocked |
 | `test_database.py` | Staging, idempotency, conflicts, the commit gate, rollback | PostgreSQL |
 | `test_api.py` | API workflow, status taxonomy, and integration boundaries | PostgreSQL |
 | `test_external_evidence.py` | Metadata-only query construction, provider handling, audit safety, and non-mutation guarantees | Nothing; provider calls are mocked |
 
-A test that needs something unavailable skips with a reason rather than passing quietly.
+A test that needs something unavailable skips with a reason rather than passing quietly. No test spends Nebius or Tavily credits: both providers are mocked.
 
 ### Test isolation
 
@@ -363,6 +498,17 @@ Twelve hazard kinds are planted: leading zero identifiers, exact duplicates, con
 
 Reset with `make reset`.
 
+### Routing fixtures
+
+Two fixtures exist to compare the routine path against the escalation path under the model-assisted profile.
+
+| Fixture | Shape | Expected routing |
+| --- | --- | --- |
+| `backend/tests/fixtures/routine_migration.csv` | Clean headers, consistent types, unambiguous mapping | Stays on Super |
+| `backend/tests/fixtures/ambiguous_migration.csv` | `acct_ref`, `effective_date`, `status`, `amount`, `country_code` with interacting ambiguities | Expected to escalate |
+
+The ambiguous fixture deliberately encodes no hidden correct answer. That is the point: the data alone does not establish the intended contract, which is precisely when a reviewer needs deeper interpretation and, where published documentation exists, External Evidence Check. Neither counts as verification.
+
 ---
 
 ## Architecture
@@ -375,15 +521,17 @@ flowchart TB
         UI["Next.js on Vercel"]
     end
 
-    subgraph GCP["Google Cloud, hosting and storage"]
+    subgraph GCP["Google Cloud, hosting and storage only"]
         API["FastAPI on Cloud Run"]
+        ROUTE["Deterministic routing decision"]
         RUST["Rust verifier, a subprocess of the API"]
         GCS[("Cloud Storage")]
         DB[("PostgreSQL: moveproof, staging, public")]
     end
 
-    subgraph Nebius["Nebius"]
-        TF["Token Factory, NVIDIA model"]
+    subgraph Nebius["Nebius Token Factory"]
+        SUPER["Nemotron 3 Super<br/>default reasoning"]
+        ULTRA["Nemotron 3 Ultra<br/>selective escalation"]
     end
 
     subgraph Tavily["Tavily"]
@@ -391,8 +539,11 @@ flowchart TB
     end
 
     UI -->|REST| API
-    API -->|schema summary and up to 5 sampled rows| TF
-    TF -->|typed proposal or reasoning result| API
+    API -->|schema summary + bounded sample| SUPER
+    SUPER -->|typed proposal| ROUTE
+    ROUTE -->|two or more concerns, same bounded input| ULTRA
+    ULTRA -->|typed proposal| API
+    ROUTE -->|fewer concerns| API
     API -->|metadata-only evidence query| EXT
     EXT -->|advisory sources| API
     API -->|reconciliation over stdin| RUST
@@ -401,14 +552,27 @@ flowchart TB
     API -->|workflow state and evidence| UI
 ```
 
-Google Cloud performs no model inference. Vertex AI and Gemini are not part of the MoveProof inference path. Nebius Token Factory serves the NVIDIA model; Tavily has a separate, advisory role for external public-reference discovery.
+Google Cloud performs no model inference. Vertex AI and Gemini are not part of the MoveProof inference path. Nebius Token Factory serves both NVIDIA models; Tavily has a separate, advisory role for external public-reference discovery.
+
+### Data and privacy boundary
+
+Three different boundaries, deliberately different widths.
+
+| Destination | What leaves MoveProof | What never leaves |
+| --- | --- | --- |
+| Nebius, both Super and Ultra | Schema summary and a bounded row sample, currently at most 5 rows | The full dataset, the uploaded file |
+| Tavily | A server-generated, metadata-only query: column names, type context, proposed operation, and a question chosen from a fixed list | Raw cell values, sampled rows, uploaded files, personal values |
+| Execution | Nothing; deterministic local code | — |
+| Verification | Nothing; independent of Nebius and Tavily output | Model and search output never count as a check result |
+
+The escalation pass receives no hidden extra dataset context. It is the same bounded input the first pass received.
 
 ### Trust boundary
 
 ```mermaid
 flowchart LR
     subgraph Untrusted
-        M["Model output"]
+        M["Model output, Super or Ultra"]
         F["Uploaded file"]
         X["External evidence"]
     end
@@ -438,7 +602,7 @@ flowchart LR
     G -->|only when nothing mandatory is outstanding| DBW
 ```
 
-No model proposal reaches the executor without deterministic validation, and no staged data reaches the destination without passing the database-backed commit gate. External evidence terminates at human review; it has no path to execution, verification state, or commit authority.
+No model proposal reaches the executor without deterministic validation, regardless of which model drafted it, and no staged data reaches the destination without passing the database-backed commit gate. External evidence terminates at human review; it has no path to execution, verification state, or commit authority.
 
 ### The commit gate
 
@@ -485,7 +649,7 @@ sequenceDiagram
     V-->>API: identifier preservation passed
 ```
 
-Every run reparses the stored original upload. No run ever reads a previous run's staged output, which is what makes the repair honest rather than a claim in the interface.
+Every run reparses the stored original upload. No run ever reads a previous run's staged output, which is what makes the repair honest rather than a claim in the interface. Repair diagnosis is deterministic code, not a model call.
 
 ### Data model
 
@@ -517,8 +681,8 @@ erDiagram
         timestamptz verified_at
     }
     EVENTS {
-        text event_type "nullable for legacy rows"
-        jsonb metadata "structured advisory audit metadata"
+        text event_type "external_evidence_checked, model_routing_decided"
+        jsonb metadata "structured audit metadata"
     }
     COMMITS {
         int expected_rows
@@ -614,6 +778,7 @@ Moveproof/
 │   │   │   └── main.py                     API routes and error mapping, deliberately thin
 │   │   ├── services/
 │   │   │   ├── pipeline.py                 Every workflow decision lives here
+│   │   │   ├── routing.py                  Deterministic Super to Ultra escalation decision
 │   │   │   └── evidence.py                 The canonical evidence object
 │   │   ├── domain/                         No web framework, no database driver
 │   │   │   ├── types.py                    Typed vocabulary, Decimal for money
@@ -623,7 +788,7 @@ Moveproof/
 │   │   │   ├── schema.py                   The destination schema
 │   │   │   └── verification.py             The independent verifier
 │   │   ├── ingest/
-│   │   │   └── parser.py                   Safe CSV and XLSX reading
+│   │   │   └── parser.py                   Safe CSV, TSV, XLSX and XLSM reading
 │   │   ├── execute/
 │   │   │   └── executor.py                 Runs only what the approved plan says
 │   │   ├── verify/
@@ -648,10 +813,10 @@ Moveproof/
 │   ├── sql/
 │   │   ├── 001_schema.sql                  Control plane, staging, destination
 │   │   ├── 002_batch3_integrity.sql        Source bytes, evidence, commit ledger
-│   │   └── 003_evidence_events.sql         Structured external-evidence audit metadata
+│   │   └── 003_evidence_events.sql         Structured audit metadata on events
 │   ├── scripts/
 │   │   ├── generate_fixtures.py            Deterministic synthetic datasets
-│   │   ├── nebius_smoke_test.py            Standalone credential check
+│   │   ├── nebius_smoke_test.py            Standalone credential and catalogue check
 │   │   └── benchmark_verifier.py           Python against Rust, measured not claimed
 │   ├── tests/
 │   │   ├── conftest.py                     Database isolation per test
@@ -660,6 +825,7 @@ Moveproof/
 │   │   ├── test_approval.py                Negative cases for the approval gate
 │   │   ├── test_canonical.py               Canonicalisation rules and Rust parity
 │   │   ├── test_reports.py                 Real PDF bytes, HTML escaping
+│   │   ├── test_model_routing.py           Escalation triggers, fallback, authority boundary
 │   │   ├── test_database.py                Staging, idempotency, commit, rollback
 │   │   ├── test_api.py                     API workflow and status taxonomy
 │   │   ├── test_external_evidence.py       Tavily boundary, safety and non-mutation tests
@@ -674,6 +840,8 @@ Moveproof/
 │   │       ├── missing_required.csv
 │   │       ├── numeric_overflow.csv
 │   │       ├── untrusted_cells.csv
+│   │       ├── routine_migration.csv       Routing demo: stays on Super
+│   │       ├── ambiguous_migration.csv     Routing demo: expected to escalate
 │   │       └── sample_evidence.py          Canonical object for the report tests
 │   ├── Dockerfile                          Two stage, compiles and tests the Rust crate
 │   ├── docker-compose.yml                  Local PostgreSQL on port 5433
@@ -747,12 +915,12 @@ The public API exposes the migration workflow, evidence exports, and advisory Ex
 | --- | --- | --- |
 | GET | `/health` | Database, Nebius, Rust, report generation, and External Evidence availability |
 | GET | `/api/schema/destination` | The destination schema and the contract hash |
-| POST | `/api/migrations` | Upload a CSV or XLSX file |
+| POST | `/api/migrations` | Upload a CSV, TSV, XLSX or XLSM file |
 | GET | `/api/migrations` | Index with plan and run state folded in |
 | GET | `/api/migrations/search?q=` | Search by filename or id, used by the command palette |
 | GET | `/api/migrations/{id}` | One migration and its plan versions |
 | GET | `/api/migrations/{id}/preview` | Real source rows |
-| GET | `/api/migrations/{id}/events` | Audit events |
+| GET | `/api/migrations/{id}/events` | Audit events, including `model_routing_decided` |
 | DELETE | `/api/migrations/{id}` | Delete an uncommitted or rolled-back migration; committed migrations must be rolled back first |
 | POST | `/api/migrations/{id}/plan/propose?profile=` | Propose a mapping: `safe`, `legacy` or `model` |
 | POST | `/api/migrations/{id}/plan/approve` | Approve with acknowledgements recorded by column |
@@ -771,6 +939,8 @@ The public API exposes the migration workflow, evidence exports, and advisory Ex
 | GET | `/api/migrations/{id}/external-evidence` | Past evidence checks for this migration |
 
 The two aliases, `/api/migrations/{id}/report.html` and `/api/migrations/{id}/report.pdf`, were the canonical paths for one release and remain registered so existing links keep working. Both are covered by tests.
+
+When the model profile is used, the propose response carries a `routing` object naming the default model, the selected model, whether escalation occurred, and the reasons.
 
 ### Status codes
 
@@ -813,11 +983,12 @@ Only `NEXT_PUBLIC_` values reach the browser, and none of them is a secret.
 | `DATABASE_URL` | PostgreSQL connection | local on port 5433 |
 | `MAX_UPLOAD_BYTES` | Upload ceiling | 26214400, 25 MB |
 | `REQUEST_TIMEOUT_SECONDS` | Outbound timeout | 60 |
-| `MODEL_SAMPLE_ROWS` | Rows sent to the model, ever | 5 |
+| `MODEL_SAMPLE_ROWS` | Rows sent to either model, ever | 5 |
 | `CORS_ORIGINS` | Comma-separated allowed origins | localhost:3000 |
-| `NEBIUS_API_KEY` | Token Factory credential | none, fails loudly |
+| `NEBIUS_API_KEY` | Token Factory credential, used by both models | none, fails loudly |
 | `NEBIUS_BASE_URL` | Token Factory endpoint | `https://api.tokenfactory.nebius.com/v1` |
-| `NEBIUS_MODEL_ID` | NVIDIA model identifier | production: `nvidia/nemotron-3-super-120b-a12b` |
+| `NEBIUS_MODEL_ID` | Default reasoning model | production: `nvidia/nemotron-3-super-120b-a12b` |
+| `NEBIUS_ESCALATION_MODEL_ID` | Optional deeper reasoning model; unset disables escalation | production: `nvidia/Nemotron-3-Ultra-550b-a55b` |
 | `MOVEPROOF_VERIFIER_BIN` | Override the Rust binary path | auto-detected |
 | `TAVILY_API_KEY` | External Evidence Check credential, backend only | none, the feature disables itself |
 | `TAVILY_BASE_URL` | Provider endpoint | `https://api.tavily.com` |
@@ -826,7 +997,9 @@ Only `NEXT_PUBLIC_` values reach the browser, and none of them is a secret.
 | `TAVILY_MAX_QUERY_CHARS` | Ceiling on the outgoing query | 400 |
 | `TAVILY_MAX_EXCERPT_CHARS` | Ceiling on each excerpt reaching the browser | 600 |
 
-Neither the Nebius key nor the Tavily key carries a `NEXT_PUBLIC_` prefix, and neither ever will. `NEXT_PUBLIC_TAVILY_API_KEY` in particular would put a billable credential in every visitor's browser. Put it in your shell or in Secret Manager, not in a file the frontend can read.
+`NEBIUS_ESCALATION_MODEL_ID` is optional and is not a credential: it names a model, and the existing `NEBIUS_API_KEY` authenticates it over the same endpoint. Removing it returns MoveProof to Super-only behaviour with no other change.
+
+Neither the Nebius key nor the Tavily key carries a `NEXT_PUBLIC_` prefix, and neither ever will. `NEXT_PUBLIC_TAVILY_API_KEY` in particular would put a billable credential in every visitor's browser. Put secrets in your shell or in Secret Manager, not in a file the frontend can read.
 
 ---
 
@@ -834,20 +1007,20 @@ Neither the Nebius key nor the Tavily key carries a `NEXT_PUBLIC_` prefix, and n
 
 **Track: Best Apps and Agents.**
 
-The model does work that is genuinely hard to encode as rules: reading an unfamiliar schema, recognising that a column of mixed date formats is a hazard rather than noise, and explaining a failure in terms an operator can act on.
+The model does work that is genuinely hard to encode as rules: reading an unfamiliar schema, recognising that a column of mixed date formats is a hazard rather than noise, and explaining a risk in terms an operator can act on.
 
-Four reasoning tasks are given to it: schema interpretation and mapping, risk identification, failure diagnosis, and repair proposal.
+MoveProof's use of NVIDIA models is a tiered reasoning layer rather than a single call. Nemotron 3 Super handles the routine pass. Nemotron 3 Ultra is reserved for cases where deterministic validation has already found enough interpretation concerns to justify it. Deterministic software, not the model, decides when deeper reasoning is warranted, and the engineering rationale is plain: the largest model should not be the price of every migration.
 
-Four constraints apply to all of them.
+Four constraints apply to both models.
 
-- Model output is untrusted input, validated against the operation allowlist before it reaches a human or the executor. An operation name the model invents is discarded during parsing and would be rejected by validation anyway.
-- The model never emits SQL, shell commands or executable code.
+- Model output is untrusted input, validated against the operation allowlist before it reaches a human or the executor. An operation name a model invents is discarded during parsing and would be rejected by validation anyway.
+- Neither model ever emits SQL, shell commands or executable code.
 - Full datasets are never sent. `pipeline._sample_for_model` slices the rows to `MODEL_SAMPLE_ROWS` and is the only path from stored rows to a prompt, so the claim is enforced in one place rather than asserted in the interface.
 - Model name, request id and token usage are logged. Field values are not.
 
 Two deterministic proposal profiles work with no credential at all, so the product is usable and testable before Nebius is wired up. The model profile is disabled in the interface when `/health` reports no credential, rather than failing when clicked.
 
-**Confirm the model id with `make smoke` rather than trusting a value written here.**
+**Confirm model IDs against your own account rather than trusting values written here.** The catalogue moves. `make smoke` lists what your account can reach and runs inference against the default model; override `NEBIUS_MODEL_ID` for a second run to exercise Ultra.
 
 ---
 
@@ -910,7 +1083,7 @@ Only validated schema and review metadata needed for the question is sent to Tav
 
 The builder rejects suspicious or overlong metadata and any question outside the allowlist. Tests inspect the outgoing request body and assert that fixture row values do not appear in it.
 
-Uploaded files, full datasets, sampled rows, raw cell values, and intentionally supplied personal values are not sent to Tavily.
+Uploaded files, full datasets, sampled rows, raw cell values, and intentionally supplied personal values are not sent to Tavily. This boundary is deliberately narrower than the one for model-assisted planning, which does receive a bounded row sample.
 
 ### What it cannot do
 
@@ -934,7 +1107,7 @@ The migration workflow continues normally throughout. A test commits a migration
 
 Each completed check appends an `external_evidence_checked` audit event with structured metadata such as field context, the selected question, the sanitised query, provider information, returned source titles and URLs, result count, and timestamp.
 
-Migration `003_evidence_events.sql` adds nullable `event_type` and `metadata JSONB` columns to the existing `moveproof.events` table rather than introducing a separate evidence table. Existing event rows remain valid, and other event types do not have to populate the new fields.
+Migration `003_evidence_events.sql` adds nullable `event_type` and `metadata JSONB` columns to the existing `moveproof.events` table rather than introducing a separate evidence table. Existing event rows remain valid, and other event types do not have to populate the new fields. The same columns carry `model_routing_decided`.
 
 The credential, uploaded rows, personal values, full data records and request headers are never recorded. The metadata is assembled field by field rather than dumped, so a future addition to the provider response cannot start leaking into the audit trail by default.
 
@@ -952,7 +1125,9 @@ The credential, uploaded rows, personal values, full data records and request he
 | Parameterised SQL everywhere | Implemented |
 | Least privilege database and cloud credentials | Configured in `deploy/` |
 | Secrets never in the browser | Implemented, no secret carries `NEXT_PUBLIC_` |
-| Only a schema summary and five rows sent to the model | Implemented, one code path |
+| Only a schema summary and five rows sent to either model | Implemented, one code path |
+| Escalation model receives the same bounded input | Implemented and tested |
+| Reasoning escalation grants no execution authority | Implemented and tested |
 | HTML output escaped against untrusted cell text | Implemented and tested |
 | Transactional commit with a fail-closed conflict policy | Implemented and tested |
 | Idempotent retries | Implemented and tested |
@@ -972,13 +1147,17 @@ Please follow the private reporting instructions in `SECURITY.md`. Do not includ
 
 Full instructions, including cost controls and the production verification checklist, are in [deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md).
 
-The verified core deployment uses Vercel for the frontend, Cloud Run for the FastAPI backend and Rust verifier, Cloud SQL for PostgreSQL, private Google Cloud Storage, and Nebius Token Factory for NVIDIA model inference.
+The deployed stack uses Vercel for the frontend, Cloud Run for the FastAPI backend and Rust verifier, Cloud SQL for PostgreSQL, private Google Cloud Storage, and Nebius Token Factory for NVIDIA model inference. Google Cloud hosts and stores; it performs no inference.
 
-The Nebius credential lives in Secret Manager and is read by Cloud Run. The Tavily credential must follow the same backend-only boundary when External Evidence Check is enabled. Neither credential belongs in Vercel or in a `NEXT_PUBLIC_*` variable.
+The Nebius and Tavily credentials live in Secret Manager and are read by Cloud Run. Neither belongs in Vercel or in a `NEXT_PUBLIC_*` variable.
+
+`NEBIUS_ESCALATION_MODEL_ID` is a plain Cloud Run environment value rather than a secret, for the reason given above: it names a model, and the existing Nebius credential authenticates it.
 
 External Evidence Check is production-verified: migration `003_evidence_events.sql` is applied, `tavily-api-key` is supplied through Secret Manager, the updated Cloud Run revision is deployed, and a real production request returned Tavily sources successfully.
 
-A Google Cloud budget alert is a notification, not a spending cap. No GPU is provisioned in the Google Cloud deployment because Nebius Token Factory serves the NVIDIA model.
+Selective reasoning routing is deployed and configured, with both model IDs present on the current revision and direct access to each confirmed. Production end-to-end escalation verification is pending: no production migration has yet produced two or more concerns and triggered the second pass.
+
+A Google Cloud budget alert is a notification, not a spending cap. No GPU is provisioned in the Google Cloud deployment because Nebius Token Factory serves the NVIDIA models.
 
 ---
 
@@ -1033,15 +1212,19 @@ It navigates and it changes the theme. It cannot approve a plan, run a verificat
 - [x] Live Nebius Token Factory inference against `nvidia/nemotron-3-super-120b-a12b`
 - [x] Full production browser workflow exercised end to end
 - [x] External Evidence Check, metadata-only advisory context from Tavily inside plan review
+- [x] Selective Super to Ultra reasoning escalation on deterministic signals, tested and deployed
 
 ### Production verification
 
 - [x] Migration `003_evidence_events.sql` applied, Tavily secret configured, updated backend deployed, and a real production Tavily runtime call confirmed
+- [x] Direct Nebius Token Factory runtime access confirmed for both `nvidia/nemotron-3-super-120b-a12b` and `nvidia/Nemotron-3-Ultra-550b-a55b`
+- [ ] A production migration that triggers automatic escalation and emits `model_routing_decided` with `escalated: true`
 
 ### Considered and deliberately deferred
 
 - Multi database destinations, streaming ETL, enterprise SSO and billing. None strengthens the core workflow for the target user.
 - A native Python extension for the Rust verifier. The subprocess boundary is easier to test from both sides and the transfer cost is small at these dataset sizes. Worth revisiting if `make bench` shows otherwise.
+- Model-backed repair diagnosis. Repair is deterministic today, and adding a model call where deterministic code already suffices would widen the trust boundary for no gain.
 
 ---
 
@@ -1059,7 +1242,6 @@ Nebius, NVIDIA, and Tavily are named throughout to describe technologies used by
 
 - X: [@wiqi_lee](https://x.com/wiqi_lee)
 - Medium: [build notes](https://medium.com/@wiqi_lee)
-- YouTube: [demo video](https://youtube.com/watch?v=REPLACE_WITH_DEMO_ID)
 - Devpost: [project entry](https://devpost.com/software/moveproof)
 
 Built for the [Nebius x NVIDIA Global AI Hackathon 2026](https://nebiusglobalaihackathon.devpost.com/). Submissions close 30 October 2026 at 10:00 Pacific Time.
