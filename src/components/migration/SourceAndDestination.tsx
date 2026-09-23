@@ -1,8 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ChangeEvent, DragEvent } from "react";
-import { ArrowRight, FileSpreadsheet, Loader2, Upload } from "lucide-react";
+import type { ChangeEvent, DragEvent, ReactNode } from "react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  FileSpreadsheet,
+  KeyRound,
+  Loader2,
+  Lock,
+  ShieldCheck,
+  Upload,
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Stepper } from "@/components/ui/Stepper";
 import { WizardActions } from "./WizardActions";
@@ -14,12 +23,51 @@ export const WIZARD_STEPS = ["Source", "Destination", "Mapping", "Review"];
 
 const ACCEPTED = ".csv,.tsv,.xlsx,.xlsm";
 
-export function StepIntro({ title, description }: { title: string; description: string }) {
+/**
+ * The heading every step shares.
+ *
+ * The eyebrow carries the step number so the position is stated twice, once
+ * in the stepper and once where the eye actually lands. `aside` is for the
+ * one fact worth putting on the same line as the title.
+ */
+export function StepIntro({
+  title,
+  description,
+  step,
+  aside,
+}: {
+  title: string;
+  description: string;
+  step?: number;
+  aside?: ReactNode;
+}) {
   return (
     <div className="mb-6">
-      <h2 className="text-xl font-semibold tracking-[-0.015em]">{title}</h2>
-      <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-ink-soft">{description}</p>
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+        <div className="min-w-0">
+          {step !== undefined && (
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-soft">
+              Step {step} of {WIZARD_STEPS.length}
+            </p>
+          )}
+          <h2 className="text-[1.45rem] font-semibold tracking-[-0.02em] sm:text-2xl">
+            {title}
+          </h2>
+        </div>
+        {aside}
+      </div>
+      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-soft">{description}</p>
     </div>
+  );
+}
+
+/** A short reassurance line. Used sparingly, and only where it is true. */
+function TrustNote({ icon: Icon, children }: { icon: typeof Lock; children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[11px] text-ink-soft">
+      <Icon size={12} aria-hidden />
+      {children}
+    </span>
   );
 }
 
@@ -59,14 +107,20 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
     void accept(event.dataTransfer.files?.[0]);
   };
 
+  const uploading = busy === "Uploading and parsing";
+
   return (
     <div>
       <Stepper steps={WIZARD_STEPS} current={0} />
       <StepIntro
-  title="Upload your source file"
-  description="CSV, TSV, XLSX, or XLSM, up to 25 MB. The file is parsed by the backend and the original bytes are stored, so a repair can always return to the source."
-/>
+        step={1}
+        title="Upload your source file"
+        description="CSV, TSV, XLSX, or XLSM, up to 25 MB. The file is parsed by the backend and the original bytes are stored, so a repair can always return to the source."
+      />
 
+      {/* The dropzone is the only thing on screen until a file lands, so it
+          carries the weight: a layered surface, a real target area, and the
+          formats stated where they are needed rather than in a footnote. */}
       <div
         onDragOver={(event: DragEvent<HTMLDivElement>) => {
           event.preventDefault();
@@ -75,13 +129,35 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={[
-          "rounded-card border-2 border-dashed p-8 text-center transition-colors",
-          dragging ? "border-brand bg-brand-soft" : "border-line bg-surface",
+          "relative overflow-hidden rounded-card border-2 border-dashed px-6 py-12 text-center",
+          "transition-[border-color,background-color] duration-200",
+          dragging
+            ? "border-brand bg-brand-soft"
+            : "border-line bg-gradient-to-b from-surface to-canvas hover:border-brand/40",
         ].join(" ")}
       >
-        <Upload size={22} className="mx-auto mb-3 text-ink-soft" aria-hidden />
-        <p className="text-sm font-semibold">Drop a spreadsheet here</p>
-        <p className="mt-1 text-xs text-ink-soft">CSV, TSV, XLSX, or XLSM</p>
+        <span
+          className={[
+            "mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl",
+            "transition-colors duration-200",
+            dragging ? "bg-brand text-on-brand" : "bg-brand-soft text-brand",
+          ].join(" ")}
+          aria-hidden
+        >
+          {uploading ? (
+            <Loader2 size={24} className="spin" />
+          ) : (
+            <Upload size={24} strokeWidth={2.25} />
+          )}
+        </span>
+
+        <p className="text-[15px] font-semibold tracking-[-0.01em]">
+          {dragging ? "Release to upload" : "Drop a spreadsheet here"}
+        </p>
+        <p className="mt-1.5 text-[13px] text-ink-soft">
+          or choose a file from your computer
+        </p>
+
         <input
           ref={inputRef}
           type="file"
@@ -93,15 +169,21 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
         />
         <Button
           variant="secondary"
-          className="mt-4"
+          className="mt-5"
           onClick={() => inputRef.current?.click()}
           disabled={busy !== null}
         >
-          {busy ? "Uploading" : "Choose a file"}
+          {uploading ? "Uploading" : "Choose a file"}
         </Button>
+
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-t border-line pt-5">
+          <TrustNote icon={FileSpreadsheet}>CSV, TSV, XLSX, XLSM · up to 25 MB</TrustNote>
+          <TrustNote icon={ShieldCheck}>Original bytes stored with a checksum</TrustNote>
+          <TrustNote icon={Lock}>Nothing is written to the destination yet</TrustNote>
+        </div>
       </div>
 
-      {busy === "Uploading and parsing" && (
+      {uploading && (
         <p className="mt-4 flex items-center gap-2 text-sm text-ink-soft" role="status">
           <Loader2 size={15} className="spin" aria-hidden />
           Parsing the file on the backend
@@ -109,18 +191,33 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
       )}
 
       {preview && (
-        <div className="mt-6 overflow-hidden rounded-card border border-line bg-surface">
-          <div className="flex flex-wrap items-center gap-4 border-b border-line px-5 py-4">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-soft">
-              <FileSpreadsheet size={18} className="text-brand" aria-hidden />
+        <div className="mt-6 overflow-hidden rounded-card border border-line bg-surface shadow-sm">
+          {/* The ingested file, presented as a record rather than a filename:
+              what arrived, how much of it, and that it is now held safely. */}
+          <div className="flex flex-wrap items-center gap-4 border-b border-line bg-gradient-to-r from-brand-soft/60 to-transparent px-5 py-4">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-surface text-brand shadow-sm">
+              <FileSpreadsheet size={20} aria-hidden />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">{filename ?? preview.filename}</p>
-              <p className="mt-0.5 text-xs text-ink-soft">
-                {preview.row_count} rows · {preview.columns.length} columns
-                {preview.truncated && `, showing the first ${preview.rows.length}`}
+              <p className="truncate text-[15px] font-semibold tracking-[-0.01em]">
+                {filename ?? preview.filename}
+              </p>
+              <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-soft">
+                <span className="font-mono tabular-nums">{preview.row_count}</span> rows
+                <span aria-hidden>·</span>
+                <span className="font-mono tabular-nums">{preview.columns.length}</span> columns
+                {preview.truncated && (
+                  <>
+                    <span aria-hidden>·</span>
+                    showing the first {preview.rows.length}
+                  </>
+                )}
               </p>
             </div>
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-ok-soft px-2.5 py-1 text-[11px] font-semibold text-ok">
+              <CheckCircle2 size={13} strokeWidth={2.5} aria-hidden />
+              Parsed
+            </span>
           </div>
 
           <div className="table-scroll">
@@ -131,7 +228,7 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
                     <th
                       key={header}
                       scope="col"
-                      className="px-4 py-2.5 text-left font-mono text-[11px] font-medium text-ink-soft"
+                      className="whitespace-nowrap border-b border-line px-4 py-3 text-left font-mono text-[11px] font-semibold text-ink-soft"
                     >
                       {header}
                     </th>
@@ -140,13 +237,16 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
               </thead>
               <tbody>
                 {preview.rows.map((row) => (
-                  <tr key={row.row_number} className="border-t border-line">
+                  <tr
+                    key={row.row_number}
+                    className="border-t border-line transition-colors hover:bg-muted/40"
+                  >
                     {preview.columns.map((column) => {
                       const value = row.values[column] ?? "";
                       return (
                         <td key={column} className="px-4 py-2.5 font-mono">
                           {value === "" ? (
-                            <span className="text-ink-soft">(empty)</span>
+                            <span className="text-ink-soft/70">(empty)</span>
                           ) : (
                             value
                           )}
@@ -158,10 +258,12 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
               </tbody>
             </table>
           </div>
-          <p className="border-t border-line px-5 py-3 text-xs leading-relaxed text-ink-soft">
-            Values are shown exactly as the parser read them. Nothing has been coerced to
-            a number or a date yet, because type interpretation is a decision the plan
-            makes explicitly.
+
+          <p className="flex items-start gap-2 border-t border-line bg-muted/30 px-5 py-3 text-xs leading-relaxed text-ink-soft">
+            <KeyRound size={13} className="mt-0.5 shrink-0" aria-hidden />
+            Values are shown exactly as the parser read them. Nothing has been coerced to a
+            number or a date yet, because type interpretation is a decision the plan makes
+            explicitly.
           </p>
         </div>
       )}
@@ -206,21 +308,36 @@ export function DestinationStep({
     };
   }, []);
 
+  const required = schema?.columns.filter((column) => column.required).length ?? 0;
+
   return (
     <div>
       <Stepper steps={WIZARD_STEPS} current={1} />
       <StepIntro
+        step={2}
         title="Destination schema"
         description={
           schema
             ? `${schema.name}, schema version ${schema.version}. You do not need to write SQL to continue.`
             : "Loading the destination schema from the backend."
         }
+        aside={
+          schema ? (
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="rounded-full border border-line bg-surface px-2.5 py-1 font-mono text-[11px] text-ink-soft">
+                {schema.columns.length} columns
+              </span>
+              <span className="rounded-full bg-bad-soft px-2.5 py-1 text-[11px] font-semibold text-bad">
+                {required} required
+              </span>
+            </div>
+          ) : undefined
+        }
       />
 
       {schema ? (
         <>
-          <div className="overflow-hidden rounded-card border border-line bg-surface">
+          <div className="overflow-hidden rounded-card border border-line bg-surface shadow-sm">
             <div className="table-scroll">
               <table className="w-full min-w-[680px] border-collapse text-sm">
                 <thead>
@@ -230,7 +347,7 @@ export function DestinationStep({
                         <th
                           key={header}
                           scope="col"
-                          className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-ink-soft"
+                          className="whitespace-nowrap border-b border-line px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-ink-soft"
                         >
                           {header}
                         </th>
@@ -240,28 +357,40 @@ export function DestinationStep({
                 </thead>
                 <tbody>
                   {schema.columns.map((column) => (
-                    <tr key={column.name} className="border-t border-line">
-                      <td className="px-4 py-3 font-mono text-[13px] font-medium">
+                    <tr
+                      key={column.name}
+                      className="border-t border-line align-top transition-colors hover:bg-muted/40"
+                    >
+                      <td className="px-4 py-3.5 font-mono text-[13px] font-semibold">
                         {column.name}
                       </td>
-                      <td className="px-4 py-3 font-mono text-[13px] text-ink-soft">
+                      <td className="px-4 py-3.5 font-mono text-[13px] text-ink-soft">
                         {column.type}
                       </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={
-                            column.required
-                              ? "text-[11px] font-semibold uppercase tracking-wider text-bad"
-                              : "text-[11px] uppercase tracking-wider text-ink-soft"
-                          }
-                        >
-                          {column.required ? "Required" : "Optional"}
-                        </span>
+                      <td className="px-4 py-3.5">
+                        {/* Required is the one value a reader scans for, so it
+                            gets a chip and Optional stays quiet. */}
+                        {column.required ? (
+                          <span className="inline-flex items-center rounded-full bg-bad-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-bad">
+                            Required
+                          </span>
+                        ) : (
+                          <span className="text-[11px] uppercase tracking-wider text-ink-soft/70">
+                            Optional
+                          </span>
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-[13px] text-ink-soft">
-                        {column.unique ? "Unique" : "None"}
+                      <td className="px-4 py-3.5 text-[13px] text-ink-soft">
+                        {column.unique ? (
+                          <span className="inline-flex items-center gap-1.5 text-[13px]">
+                            <KeyRound size={12} className="shrink-0" aria-hidden />
+                            Unique
+                          </span>
+                        ) : (
+                          <span className="text-ink-soft/70">None</span>
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-[13px] text-ink-soft">
+                      <td className="max-w-sm px-4 py-3.5 text-[13px] leading-relaxed text-ink-soft">
                         {column.description}
                       </td>
                     </tr>
@@ -270,16 +399,21 @@ export function DestinationStep({
               </table>
             </div>
           </div>
-          <p className="mt-3 font-mono text-[11px] text-ink-soft">
+
+          <p className="mt-3 flex items-center gap-2 font-mono text-[11px] text-ink-soft">
+            <ShieldCheck size={12} aria-hidden />
             Verification contract {schema.contract.version} ·{" "}
             {schema.contract.hash.slice(0, 22)}
           </p>
         </>
       ) : (
-        <p className="flex items-center gap-2 text-sm text-ink-soft" role="status">
-          <Loader2 size={15} className="spin" aria-hidden />
-          Loading
-        </p>
+        <div
+          className="flex items-center gap-3 rounded-card border border-line bg-surface px-5 py-8 text-sm text-ink-soft"
+          role="status"
+        >
+          <Loader2 size={16} className="spin text-brand" aria-hidden />
+          Loading the destination schema
+        </div>
       )}
 
       <WizardActions onBack={onBack} backLabel={`Back to ${backLabel.toLowerCase()}`}>
