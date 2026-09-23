@@ -140,7 +140,7 @@ export function ExternalEvidencePanel({
 
               <Button
                 icon={busy ? RefreshCw : Search}
-                onClick={() => void run()}
+                onClick={() = className="transition-colors duration-200 hover:bg-brand hover:text-on-brand"> void run()}
                 disabled={busy || !selected}
               >
                 {busy ? "Checking" : "Check external evidence"}
