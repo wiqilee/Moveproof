@@ -22,11 +22,11 @@ export function TopBar({ crumbs }: { crumbs: Crumb[] }) {
       <div className="flex items-center gap-2.5">
         {busy && (
           <span
-            className="flex items-center gap-1.5 text-xs text-ink-soft"
+            className="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand-soft px-3 py-1.5 text-xs font-semibold text-brand shadow-sm"
             role="status"
             aria-live="polite"
           >
-            <Loader2 size={13} className="spin" aria-hidden />
+            <Loader2 size={14} className="spin" aria-hidden />
             {busy}
           </span>
         )}

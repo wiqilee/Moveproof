@@ -234,7 +234,7 @@ export function MigrationProvider({ children }: { children: ReactNode }) {
     async (profile: "safe" | "legacy" | "model") => {
       if (!migrationId) return;
       const result = await guard(
-        profile === "model" ? "Asking the model for a mapping" : "Building the plan",
+        profile === "model" ? "Generating mapping with Nemotron…" : "Building the plan",
         () => api.proposePlan(migrationId, profile)
       );
       if (result) setProposal(result);
