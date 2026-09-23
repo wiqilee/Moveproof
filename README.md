@@ -136,7 +136,7 @@ Human approvals recorded in a report are audit entries. They are not cryptograph
 
 ## How it works
 
-One migration, eight stages. Human control remains explicit at every decision point.
+One migration, eight stages. Four of them require a human decision.
 
 | Stage | Who acts | What is produced |
 | --- | --- | --- |
@@ -194,6 +194,10 @@ The routing decision is made **after** the first proposal has been validated, so
 - a mapping that requires acknowledgement by name, which is the domain's own marker for a lossy transformation
 - a non-fatal validation issue, the validator saying a mapping is legal but questionable
 
+Plan validation alone cannot see the data, so one class of ambiguity would otherwise be invisible. `app/domain/sample_advisories.py` closes that gap deterministically: when a mapping proposes `CAST_TO_DECIMAL` and the bounded sample contains both a dot-decimal value (`1,250.00`) and a comma-decimal value (`1250,00`), it adds one non-fatal advisory saying the decimal and thousands separator interpretation is ambiguous.
+
+That module reads only the rows already sampled for planning, never loads rows itself, ignores whatever free-text risk the model wrote, names no values in its reason, and can never make a plan fatal. A column written consistently, in either convention, is not flagged.
+
 **Two or more concerns in one plan escalates. Fewer does not.** One concern is an ordinary migration and the acknowledgement gate already covers it; the leading-zero demonstration is exactly that case, and it deliberately does not escalate.
 
 Two things are deliberately absent. There is **no confidence score**: the model reply schema has no such field, and inventing a number purely to drive routing would make the decision unexplainable in the one place it must be explainable. And **dataset size is never a signal** — a million clean rows are easy, fifty messy ones are hard. The decision function has no access to a row count.
@@ -221,17 +225,17 @@ Verification and commit safety never depend on the escalation model being reacha
 
 Each model-assisted proposal writes a `model_routing_decided` event carrying the default model ID, the selected model ID, whether escalation occurred, and the deterministic reasons. No row values are written to justify a routing decision, and no credential appears.
 
-A reviewer can answer "why did this migration use the larger model" without reading backend code.
+A reviewer can answer "why did this migration use the larger model" without reading backend code, because `GET /api/migrations/{id}/events` returns `event_type` and `metadata` alongside the existing fields. Older events simply carry `null` in both, so the addition is backward compatible.
 
 ### Verification status
 
-These claims are kept separate because they are established by different means.
+Four separate claims, kept separate because they are established by different means.
 
 | Claim | Status | Evidence |
 | --- | --- | --- |
-| Routing implementation | **Verified** | `pytest tests/test_model_routing.py -v`, 18 passed |
-| Routing safety boundary | **Verified** | The same suite asserts escalation cannot bypass validation, human approval, verification, or the commit gate |
-| Broader backend suite, non-database | **Verified** | 153 passed, 1 skipped |
+| Routing implementation | **Verified** | `pytest tests/test_model_routing.py -v`, 31 passed |
+| Routing safety boundary | **Verified** | The same suite asserts escalation cannot reach validation, approval, verification or the commit gate |
+| Broader backend suite, non-database | **Verified** | 166 passed, 1 skipped |
 | Routing-capable backend deployed | **Verified** | Running on Cloud Run |
 | Super configured in production | **Verified** | `NEBIUS_MODEL_ID` set on the deployed revision |
 | Ultra configured in production | **Verified** | `NEBIUS_ESCALATION_MODEL_ID` set on the deployed revision |
@@ -280,7 +284,7 @@ Current verification commands:
 - `npm run build`
 - `make rust-test`
 
-Latest backend run outside the database suite: **153 passed, 1 skipped**, including 18 routing tests. The single skip is the branch that only runs when the Rust binary is absent; it skips because the binary is present.
+Latest backend run outside the database suite: **166 passed, 1 skipped**, including **31 routing tests**. Latest database and API suite: **124 passed**. The single skip is the branch that only runs when the Rust binary is absent; it skips because the binary is present.
 
 ### Production
 
@@ -453,7 +457,7 @@ pytest tests/test_model_routing.py -v    # selective reasoning escalation
 | `test_approval.py` | Negative cases: fatal validation, unacknowledged lossy casts, forged plans | Nothing |
 | `test_canonical.py` | Canonicalisation rules, and parity between Python and Rust | Rust for parity |
 | `test_reports.py` | Real PDF bytes, page count, HTML escaping, three formats agreeing | reportlab |
-| `test_model_routing.py` | Escalation triggers, fallback, audit metadata, and the authority boundary | Nothing; inference is mocked |
+| `test_model_routing.py` | Escalation triggers, the deterministic decimal advisory, fallback, audit metadata, and the authority boundary | Nothing; inference is mocked |
 | `test_database.py` | Staging, idempotency, conflicts, the commit gate, rollback | PostgreSQL |
 | `test_api.py` | API workflow, status taxonomy, and integration boundaries | PostgreSQL |
 | `test_external_evidence.py` | Metadata-only query construction, provider handling, audit safety, and non-mutation guarantees | Nothing; provider calls are mocked |
@@ -505,7 +509,7 @@ Two fixtures exist to compare the routine path against the escalation path under
 | Fixture | Shape | Expected routing |
 | --- | --- | --- |
 | `backend/tests/fixtures/routine_migration.csv` | Clean headers, consistent types, unambiguous mapping | Stays on Super |
-| `backend/tests/fixtures/ambiguous_migration.csv` | `acct_ref`, `effective_date`, `status`, `amount`, `country_code` with interacting ambiguities | Expected to escalate |
+| `backend/tests/fixtures/ambiguous_migration.csv` | The same customer columns, but `signup_date` reads two ways and `balance` mixes decimal conventions | Two concerns, so it escalates |
 
 The ambiguous fixture deliberately encodes no hidden correct answer. That is the point: the data alone does not establish the intended contract, which is precisely when a reviewer needs deeper interpretation and, where published documentation exists, External Evidence Check. Neither counts as verification.
 
@@ -786,6 +790,7 @@ Moveproof/
 │   │   │   ├── plan.py                     Allowlist validation, hardened approval
 │   │   │   ├── plans.py                    Safe and legacy proposal profiles
 │   │   │   ├── schema.py                   The destination schema
+│   │   │   ├── sample_advisories.py        Deterministic advisories from the bounded sample
 │   │   │   └── verification.py             The independent verifier
 │   │   ├── ingest/
 │   │   │   └── parser.py                   Safe CSV, TSV, XLSX and XLSM reading
@@ -920,7 +925,7 @@ The public API exposes the migration workflow, evidence exports, and advisory Ex
 | GET | `/api/migrations/search?q=` | Search by filename or id, used by the command palette |
 | GET | `/api/migrations/{id}` | One migration and its plan versions |
 | GET | `/api/migrations/{id}/preview` | Real source rows |
-| GET | `/api/migrations/{id}/events` | Audit events, including `model_routing_decided` |
+| GET | `/api/migrations/{id}/events` | Audit events; each carries `event_type` and `metadata` when present, including `model_routing_decided` |
 | DELETE | `/api/migrations/{id}` | Delete an uncommitted or rolled-back migration; committed migrations must be rolled back first |
 | POST | `/api/migrations/{id}/plan/propose?profile=` | Propose a mapping: `safe`, `legacy` or `model` |
 | POST | `/api/migrations/{id}/plan/approve` | Approve with acknowledgements recorded by column |

@@ -340,6 +340,13 @@ def events(migration_id: str, conn=Depends(db)) -> dict[str, Any]:
                 "level": row["level"],
                 "message": row["message"],
                 "created_at": row["created_at"].isoformat(),
+                # Structured audit fields. Null for older plain events, so
+                # existing consumers see only additive keys. The metadata is
+                # what the writer chose to record: model ids and reasons for
+                # routing, titles and URLs for evidence. It never holds row
+                # values or credentials, because no writer puts them there.
+                "event_type": row.get("event_type"),
+                "metadata": row.get("metadata"),
             }
             for row in rows
         ]

@@ -23,6 +23,7 @@ from app.db.repository import NotFound
 from app.domain.contract import CUSTOMERS_CONTRACT_V1, VerificationContract
 from app.domain.plan import ApprovalRefused, ValidationResult, approve, validate_plan
 from app.services.routing import RoutingDecision, evaluate as evaluate_routing
+from app.domain.sample_advisories import with_sample_advisories
 from app.domain.plans import legacy_integer_cast_plan, safe_plan
 from app.domain.schema import CUSTOMERS_V1
 from app.domain.types import (
@@ -160,9 +161,10 @@ def propose_plan(
     # Only the model profile has a model to route between. The deterministic
     # profiles carry no routing record because no model was consulted.
     routing: RoutingDecision | None = None
+    sample: list[dict] | None = None
 
     if profile == "model":
-        plan, routing = _propose_with_routing(conn, migration_id, columns)
+        plan, routing, sample = _propose_with_routing(conn, migration_id, columns)
     elif profile == "legacy":
         plan = legacy_integer_cast_plan(date_policy=DateFormatPolicy.ISO)
     else:
@@ -172,6 +174,9 @@ def propose_plan(
         )
 
     validation = validate_plan(plan, SCHEMA, columns)
+    if sample is not None:
+        # The reviewer sees the same deterministic advisories the router used.
+        validation = with_sample_advisories(validation, sample)
     repository.log_event(
         conn,
         migration_id,
@@ -191,7 +196,7 @@ def propose_plan(
 
 def _propose_with_routing(
     conn: psycopg.Connection, migration_id: uuid.UUID, columns: tuple[str, ...]
-) -> tuple[MigrationPlan, RoutingDecision]:
+) -> tuple[MigrationPlan, RoutingDecision, list[dict]]:
     """Propose on the default model, then escalate only when it is justified.
 
     Two passes at most:
@@ -211,20 +216,26 @@ def _propose_with_routing(
     default_model = settings.nebius_model_id or "nebius:default"
     escalation_model = settings.nebius_escalation_model_id or None
 
-    first = _propose_via_model(conn, migration_id, columns)
+    first, sample = _propose_via_model(conn, migration_id, columns)
 
     # Routed on the validated first proposal, so the signals are facts the
     # validator computed rather than anything the model asserted about itself.
-    first_validation = validate_plan(first, SCHEMA, columns)
+    # Sample advisories come from the same bounded rows the model already saw;
+    # nothing here loads more data.
+    first_validation = with_sample_advisories(
+        validate_plan(first, SCHEMA, columns), sample
+    )
     decision = evaluate_routing(first_validation, default_model, escalation_model)
 
     if not decision.escalate:
         _log_routing(conn, migration_id, decision)
-        return first, decision
+        return first, decision, sample
 
     try:
-        deeper = _propose_via_model(
-            conn, migration_id, columns, model_id=decision.selected_model
+        # The identical sample, passed through rather than re-read, so both
+        # passes see exactly the same bounded context.
+        deeper, _ = _propose_via_model(
+            conn, migration_id, columns, model_id=decision.selected_model, sample=sample
         )
     except PipelineError as exc:
         # Escalation is an optimisation, never a dependency.
@@ -239,10 +250,10 @@ def _propose_with_routing(
             ),
         )
         _log_routing(conn, migration_id, fallback)
-        return first, fallback
+        return first, fallback, sample
 
     _log_routing(conn, migration_id, decision)
-    return deeper, decision
+    return deeper, decision, sample
 
 
 def _log_routing(
@@ -274,7 +285,8 @@ def _propose_via_model(
     migration_id: uuid.UUID,
     columns: tuple[str, ...],
     model_id: str | None = None,
-) -> MigrationPlan:
+    sample: list[dict] | None = None,
+) -> tuple[MigrationPlan, list[dict]]:
     """Ask Nebius for a mapping and turn the reply into a typed plan.
 
     The reply is data, never code. Unknown operation names are dropped here and
@@ -298,7 +310,8 @@ def _propose_via_model(
     # The same bounded input for either model: schema metadata and at most
     # settings.model_sample_rows rows. Escalation buys deeper reasoning, never
     # a wider view of the data.
-    sample = _sample_for_model(conn, migration_id)
+    if sample is None:
+        sample = _sample_for_model(conn, migration_id)
     schema_summary = "\n".join(
         f"  {c.name} {c.data_type}"
         f"{' NOT NULL' if c.required else ''}{' UNIQUE' if c.unique else ''}"
@@ -366,13 +379,14 @@ def _propose_via_model(
     mappings.append(
         Mapping("(duplicate rows)", None, Operation.DEDUPLICATE)
     )
-    return MigrationPlan(
+    plan = MigrationPlan(
         version=1,
         mappings=tuple(mappings),
         proposed_by=f"nebius:{reply['model']}",
         key_column="customer_id",
         date_format_policy=None,
     )
+    return plan, sample
 
 
 def _validation_payload(validation: ValidationResult) -> dict[str, Any]:

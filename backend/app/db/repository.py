@@ -811,7 +811,7 @@ def list_events(conn: psycopg.Connection, migration_id: uuid.UUID) -> list[dict[
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT run_id, level, message, event_type, created_at
+            SELECT run_id, level, message, event_type, metadata, created_at
             FROM moveproof.events WHERE migration_id = %s ORDER BY id
             """,
             (migration_id,),

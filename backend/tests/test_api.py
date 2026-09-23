@@ -1312,3 +1312,82 @@ def test_an_empty_result_set_is_reported_as_no_results(client, monkeypatch):
     assert body["status"] == "no_results"
     assert body["sources"] == []
     assert body["advisory_notice"]
+
+
+# =====================================================================
+# Events expose structured audit fields
+#
+# A production end-to-end run proves escalation by reading one event back:
+# event_type model_routing_decided, metadata.escalated true, and the selected
+# model. The endpoint has to return those fields for that proof to exist.
+# =====================================================================
+
+
+def _record_routing_event(migration_id: str, escalated: bool) -> dict:
+    """Write a real routing event through the same code path the pipeline uses."""
+    import uuid
+
+    import psycopg
+
+    from app.db import repository
+    from app.services.routing import RoutingDecision
+
+    decision = RoutingDecision(
+        escalate=escalated,
+        default_model="nvidia/nemotron-3-super-120b-a12b",
+        selected_model=(
+            "nvidia/Nemotron-3-Ultra-550b-a55b"
+            if escalated
+            else "nvidia/nemotron-3-super-120b-a12b"
+        ),
+        reasons=("2 interpretation concerns appear in one plan",),
+    )
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+        repository.log_event(
+            conn,
+            uuid.UUID(migration_id),
+            None,
+            "info",
+            f"Reasoning escalated to {decision.selected_model}",
+            event_type="model_routing_decided",
+            metadata=decision.as_metadata(),
+        )
+        conn.commit()
+    return decision.as_metadata()
+
+
+def test_events_return_event_type_and_metadata(client):
+    migration_id = upload(client)
+    _record_routing_event(migration_id, escalated=True)
+
+    events = client.get(f"/api/migrations/{migration_id}/events").json()["events"]
+    routing = [e for e in events if e["event_type"] == "model_routing_decided"]
+
+    assert len(routing) == 1
+    assert routing[0]["metadata"]["escalated"] is True
+    assert routing[0]["metadata"]["selected_model"] == "nvidia/Nemotron-3-Ultra-550b-a55b"
+    assert routing[0]["metadata"]["default_model"] == "nvidia/nemotron-3-super-120b-a12b"
+
+
+def test_plain_events_keep_their_shape_and_gain_only_null_fields(client):
+    """Backward compatible: existing keys are unchanged, new keys are additive."""
+    migration_id = upload(client)
+    events = client.get(f"/api/migrations/{migration_id}/events").json()["events"]
+
+    assert events, "an upload must record at least one plain event"
+    for event in events:
+        assert {"run_id", "level", "message", "created_at"} <= set(event)
+        assert "event_type" in event and "metadata" in event
+    plain = [e for e in events if e["event_type"] is None]
+    assert plain and all(e["metadata"] is None for e in plain)
+
+
+def test_event_metadata_exposes_no_row_values_or_credentials(client):
+    migration_id = upload(client)
+    _record_routing_event(migration_id, escalated=True)
+    body = client.get(f"/api/migrations/{migration_id}/events").text
+
+    for value in ("00127", "Amara", "@example.com", "1200.50"):
+        assert value not in body
+    for secret in ("NEBIUS_API_KEY", "Bearer ", "nvapi-", "tvly-"):
+        assert secret not in body

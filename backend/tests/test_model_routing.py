@@ -271,3 +271,193 @@ def test_the_threshold_is_interaction_not_presence():
 def test_several_validation_concerns_escalate_on_their_own():
     """Two questionable mappings interact even without an acknowledged cast."""
     assert evaluate(concerning(acknowledged=0, advisories=2), SUPER, ULTRA).escalate
+
+
+# --------------------------------------------------------------------------
+# Deterministic sample advisories: the second concern
+# --------------------------------------------------------------------------
+
+import csv  # noqa: E402
+
+from app.config import settings  # noqa: E402
+from app.domain.sample_advisories import (  # noqa: E402
+    MIXED_DECIMAL_REASON,
+    decimal_format_advisories,
+    with_sample_advisories,
+)
+from app.domain.types import Mapping, MigrationPlan, Operation  # noqa: E402
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+def model_shaped_plan() -> MigrationPlan:
+    """The plan shape Super proposes for a customers file.
+
+    Built by hand so the test does not depend on a live model. The model path
+    always leaves `date_format_policy` unset, which is why PARSE_DATE arrives
+    needing acknowledgement.
+    """
+    return MigrationPlan(
+        version=1,
+        mappings=(
+            Mapping("customer_id", "customer_id", Operation.PRESERVE_IDENTIFIER_AS_STRING),
+            Mapping("full_name", "full_name", Operation.NORMALIZE_WHITESPACE),
+            Mapping("email", "email", Operation.RENAME_FIELD),
+            Mapping("signup_date", "signup_date", Operation.PARSE_DATE),
+            Mapping("balance", "balance", Operation.CAST_TO_DECIMAL),
+            Mapping("region", "region", Operation.NULL_HANDLING),
+        ),
+        proposed_by="nebius:test",
+        key_column="customer_id",
+        date_format_policy=None,
+    )
+
+
+def bounded_sample(name: str) -> list[dict]:
+    """The fixture's rows, cut to the same bound the pipeline uses."""
+    with open(FIXTURES / name, newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    return rows[: settings.model_sample_rows]
+
+
+def routed(name: str) -> tuple[ValidationResult, RoutingDecision]:
+    validation = with_sample_advisories(
+        validate_plan(model_shaped_plan(), CUSTOMERS_V1, COLUMNS), bounded_sample(name)
+    )
+    return validation, evaluate(validation, SUPER, ULTRA)
+
+
+def test_mixed_decimal_format_becomes_a_non_fatal_advisory():
+    validation = validate_plan(model_shaped_plan(), CUSTOMERS_V1, COLUMNS)
+    sample = [{"balance": "1,250.00"}, {"balance": "1250,00"}, {"balance": "980,40"}]
+    issues = decimal_format_advisories(validation, sample)
+
+    assert len(issues) == 1
+    assert issues[0].source_column == "balance"
+    assert issues[0].fatal is False
+
+
+def test_consistent_decimal_format_is_not_flagged():
+    validation = validate_plan(model_shaped_plan(), CUSTOMERS_V1, COLUMNS)
+    for sample in (
+        [{"balance": "1200.50"}, {"balance": "1,004.05"}, {"balance": "980.40"}],
+        [{"balance": "1250,00"}, {"balance": "980,40"}],
+        [{"balance": "1250"}, {"balance": "1,250"}, {"balance": ""}],
+    ):
+        assert decimal_format_advisories(validation, sample) == []
+
+
+def test_only_decimal_casts_are_inspected():
+    """A mixed-looking value under another operation is not this rule's business."""
+    validation = validate_plan(model_shaped_plan(), CUSTOMERS_V1, COLUMNS)
+    sample = [{"region": "1,250.00"}, {"region": "1250,00"}]
+    assert decimal_format_advisories(validation, sample) == []
+
+
+def test_the_advisory_never_makes_a_plan_fatal():
+    validation = validate_plan(model_shaped_plan(), CUSTOMERS_V1, COLUMNS)
+    enriched = with_sample_advisories(
+        validation, [{"balance": "1,250.00"}, {"balance": "1250,00"}]
+    )
+    assert enriched.is_executable == validation.is_executable
+    assert len(enriched.fatal_issues) == len(validation.fatal_issues)
+
+
+def test_the_advisory_reason_carries_no_row_values():
+    validation = validate_plan(model_shaped_plan(), CUSTOMERS_V1, COLUMNS)
+    issues = decimal_format_advisories(
+        validation, [{"balance": "1,250.00"}, {"balance": "1250,00"}]
+    )
+    assert issues[0].reason == MIXED_DECIMAL_REASON
+    for value in ("1,250.00", "1250,00"):
+        assert value not in issues[0].reason
+
+
+def test_the_clean_fixture_stays_on_super():
+    """One concern at most: the unset date policy. Balances are consistent."""
+    validation, decision = routed("routine_migration.csv")
+    assert not [i for i in validation.issues if not i.fatal]
+    assert decision.escalate is False
+    assert decision.selected_model == SUPER
+
+
+def test_the_ambiguous_fixture_reaches_two_deterministic_concerns():
+    validation, decision = routed("ambiguous_migration.csv")
+
+    assert validation.is_executable, "the fixture must not produce fatal issues"
+    acknowledged = [m.source_column for m in validation.plan.mappings if m.requires_acknowledgement]
+    advisories = [i.source_column for i in validation.issues if not i.fatal]
+    assert "signup_date" in acknowledged
+    assert advisories == ["balance"]
+    assert len(acknowledged) + len(advisories) >= 2
+
+
+def test_two_concerns_select_ultra():
+    _, decision = routed("ambiguous_migration.csv")
+    assert decision.escalate is True
+    assert decision.selected_model == ULTRA
+
+
+def test_fatal_issues_still_do_not_count_toward_escalation():
+    plan = model_shaped_plan()
+    validation = ValidationResult(
+        plan=validate_plan(plan, CUSTOMERS_V1, COLUMNS).plan,
+        issues=[
+            ValidationIssue("x", "fatal one", True),
+            ValidationIssue("y", "fatal two", True),
+            ValidationIssue("z", "fatal three", True),
+        ],
+    )
+    # One acknowledged mapping (signup_date) plus three fatal issues is still
+    # one concern.
+    assert evaluate(validation, SUPER, ULTRA).escalate is False
+
+
+def test_the_ambiguous_fixture_mixes_formats_inside_the_bound():
+    """The mixed formats must be visible within MODEL_SAMPLE_ROWS, or the rule
+    could only fire by reading more data than the bound allows."""
+    balances = [row["balance"] for row in bounded_sample("ambiguous_migration.csv")]
+    assert any("." in b for b in balances) and any(b.count(",") == 1 and "." not in b for b in balances)
+
+
+def test_both_passes_receive_the_identical_sample():
+    source = Path("app/services/pipeline.py").read_text()
+    orchestrator = source[
+        source.index("def _propose_with_routing") : source.index("def _log_routing")
+    ]
+    assert "sample=sample" in orchestrator, "the escalation pass must reuse the first sample"
+    assert "_sample_for_model" not in orchestrator
+
+
+def test_sample_advisories_load_nothing_themselves():
+    """Checked on imports and calls, not prose: the docstring may name the
+    sampler to explain where the bound lives, but the code must not reach it."""
+    import ast
+
+    tree = ast.parse(Path("app/domain/sample_advisories.py").read_text())
+    imported = {
+        node.module or ""
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+    } | {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    called = {
+        node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+    }
+    assert not any(m.startswith(("app.db", "app.nebius", "app.services", "psycopg")) for m in imported)
+    assert not called & {"load_source_rows", "_sample_for_model", "complete_json"}
+
+
+def test_routing_metadata_from_the_ambiguous_fixture_is_clean():
+    _, decision = routed("ambiguous_migration.csv")
+    recorded = str(decision.as_metadata())
+    for row in bounded_sample("ambiguous_migration.csv"):
+        for value in row.values():
+            assert value not in recorded, f"row value {value!r} leaked into routing metadata"
+    assert "api_key" not in recorded.lower() and "bearer" not in recorded.lower()
