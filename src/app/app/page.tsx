@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, FileSearch, Loader2, Plus, RefreshCw } from "lucide-react";
+import { ArrowRight, FileSearch, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { TopBar } from "@/components/workspace/TopBar";
 import { PageHeading } from "@/components/workspace/PageHeading";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { migrationStatePresentation } from "@/domain/status";
+import { api, describeError } from "@/data/api";
 import type { MigrationState } from "@/domain/types";
 import { MigrationActions } from "@/components/migration/MigrationActions";
 import { useMigration } from "@/lib/migration-store";
@@ -31,16 +33,54 @@ export default function OverviewPage() {
     useMigration();
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<ErrorState | null>(null);
+  const [deleteDraftsOpen, setDeleteDraftsOpen] = useState(false);
+  const [deleteDraftsBusy, setDeleteDraftsBusy] = useState(false);
 
   useEffect(() => {
     if (backendReachable) void refreshMigrations();
   }, [backendReachable, refreshMigrations]);
 
+  const draftMigrations = migrations.filter(
+    (migration) => !migration.approved_plan_version && !migration.committed_at
+  );
+
+  const deleteAllDrafts = async () => {
+    if (draftMigrations.length === 0 || deleteDraftsBusy) return;
+
+    const total = draftMigrations.length;
+    let deleted = 0;
+
+    setDeleteDraftsBusy(true);
+    setNotice(null);
+    setActionError(null);
+
+    try {
+      for (const migration of draftMigrations) {
+        await api.deleteMigration(migration.id);
+        deleted += 1;
+      }
+
+      setNotice(`Deleted ${deleted} draft migration${deleted === 1 ? "" : "s"}.`);
+    } catch (caught) {
+      setActionError(describeError(caught));
+
+      if (deleted > 0) {
+        setNotice(
+          `Deleted ${deleted} of ${total} draft migrations before the operation stopped.`
+        );
+      }
+    } finally {
+      setDeleteDraftsOpen(false);
+      setDeleteDraftsBusy(false);
+      void refreshMigrations();
+    }
+  };
+
   const counts = {
     total: migrations.length,
     committed: migrations.filter((m) => m.committed_at).length,
     awaiting: migrations.filter((m) => m.verified_at && !m.committed_at).length,
-    draft: migrations.filter((m) => !m.approved_plan_version).length,
+    draft: draftMigrations.length,
   };
 
   return (
@@ -82,15 +122,36 @@ export default function OverviewPage() {
         )}
 
         <section aria-label="Migrations">
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="text-[13px] font-semibold text-ink-soft">Migrations</h2>
-            <button
-              onClick={() => void refreshMigrations()}
-              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-ink-soft transition-colors hover:bg-muted hover:text-ink"
-            >
-              <RefreshCw size={12} aria-hidden />
-              Refresh
-            </button>
+
+            <div className="flex items-center gap-1">
+              {draftMigrations.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setDeleteDraftsOpen(true)}
+                  disabled={deleteDraftsBusy}
+                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-bad transition-colors hover:bg-bad-soft disabled:pointer-events-none disabled:opacity-45"
+                >
+                  {deleteDraftsBusy ? (
+                    <Loader2 size={12} className="spin" aria-hidden />
+                  ) : (
+                    <Trash2 size={12} aria-hidden />
+                  )}
+                  Delete all drafts ({draftMigrations.length})
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => void refreshMigrations()}
+                disabled={deleteDraftsBusy}
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-ink-soft transition-colors hover:bg-muted hover:text-ink disabled:pointer-events-none disabled:opacity-45"
+              >
+                <RefreshCw size={12} aria-hidden />
+                Refresh
+              </button>
+            </div>
           </div>
 
           {notice && (
@@ -207,6 +268,23 @@ export default function OverviewPage() {
             </div>
           )}
         </section>
+
+        <ConfirmDialog
+          open={deleteDraftsOpen}
+          busy={deleteDraftsBusy}
+          title={`Delete all ${draftMigrations.length} draft migration${
+            draftMigrations.length === 1 ? "" : "s"
+          }?`}
+          body={`This will permanently remove ${draftMigrations.length} migration${
+            draftMigrations.length === 1 ? "" : "s"
+          } with no approved plan, including their uploaded source files and derived data. Migrations with approved plans and committed migrations will not be touched.`}
+          confirmLabel="Delete all drafts"
+          cancelLabel="Cancel"
+          onConfirm={() => void deleteAllDrafts()}
+          onCancel={() => {
+            if (!deleteDraftsBusy) setDeleteDraftsOpen(false);
+          }}
+        />
       </main>
     </>
   );
