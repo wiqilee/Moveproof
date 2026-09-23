@@ -242,9 +242,9 @@ Four separate claims, kept separate because they are established by different me
 | Direct Nemotron Super runtime access | **Verified** | A real Nebius Token Factory request succeeded against `nvidia/nemotron-3-super-120b-a12b` |
 | Direct Nemotron Ultra runtime access | **Verified** | A real Nebius Token Factory request succeeded against `nvidia/Nemotron-3-Ultra-550b-a55b`, in a separate run |
 | Tavily External Evidence Check | **Verified in production** | A real deployed request returned advisory sources |
-| Deployed end-to-end automatic escalation | **Pending** | No production migration has yet produced two or more concerns and triggered the second pass |
+| Deployed end-to-end automatic escalation | **Verified in production** | A real production migration triggered Super → deterministic validation → Ultra, with `model_routing_decided` recording `escalated: true` |
 
-Reaching Ultra directly proves the model is available over the configured endpoint. It does not prove the routing rule fires on a real upload, and this README does not claim otherwise until a deployed run has taken the path `Super → validator finds two or more concerns → Ultra → model_routing_decided`.
+Production end-to-end routing is verified. A real migration first called `nvidia/nemotron-3-super-120b-a12b`; deterministic validation then identified two concerns — an explicit acknowledgement for `signup_date` and a decimal-format advisory for `balance` — and automatically escalated the same bounded sample to `nvidia/Nemotron-3-Ultra-550b-a55b`. The structured `model_routing_decided` event recorded `escalated: true` and Ultra as the selected model.
 
 ---
 
@@ -263,7 +263,7 @@ MoveProof distinguishes between implemented, tested, deployed, and end-to-end ve
 | Python and Rust hashing parity | Yes | **Verified** | `make rust` then `make test-core` |
 | Synthetic generator and manifest | Yes | **Verified** | `make test-core` |
 | PDF and HTML rendering | Yes | **Verified** | `make test-core` |
-| Selective Super to Ultra routing | Yes | **Tested and deployed; production end-to-end escalation verification pending** | `pytest tests/test_model_routing.py -v`, then a production run that emits `model_routing_decided` with `escalated: true` |
+| Selective Super to Ultra routing | Yes | **Verified in production** | `31 routing tests`, followed by a deployed run where `model_routing_decided` recorded `escalated: true` and selected Nemotron 3 Ultra |
 | PostgreSQL staging and commit gates | Yes | **Verified locally and in CI** | `make test-db` |
 | Idempotency and conflict handling | Yes | **Verified locally and in CI** | `make test-db` |
 | FastAPI endpoints and status taxonomy | Yes | **Verified locally and in CI** | `make test-db` |
@@ -298,12 +298,12 @@ The core stack is deployed and the full browser workflow has been exercised end 
 | Private objects | Google Cloud Storage |
 | Canonical reconciliation | Rust verifier compiled into the backend container |
 | Default reasoning | Nebius Token Factory, `nvidia/nemotron-3-super-120b-a12b` |
-| Escalation reasoning | Nebius Token Factory, `nvidia/Nemotron-3-Ultra-550b-a55b`, configured and deployed; automatic escalation not yet exercised in production |
+| Escalation reasoning | Nebius Token Factory, `nvidia/Nemotron-3-Ultra-550b-a55b`; automatic Super → Ultra escalation verified in production |
 | External evidence | Tavily External Evidence Check verified in production |
 
 The deployed `/health` endpoint reports status ok, PostgreSQL connected, Nebius configured, the Rust verifier available, JSON, HTML and PDF reports available, External Evidence Check available, and a model sample limit of 5 rows.
 
-The routing-capable backend revision is deployed, both model IDs are present in its configuration, and a direct Token Factory request to the escalation model has succeeded. What remains unverified is the automatic path: a production migration whose validated first proposal carries two or more concerns and therefore triggers the second pass.
+The routing-capable backend revision is deployed, both model IDs are present in its configuration, and the automatic path is verified in production. A real migration produced two deterministic concerns and triggered the second pass to Nemotron 3 Ultra, with `model_routing_decided` recording `escalated: true`.
 
 External Evidence Check is production-verified. Migration `003_evidence_events.sql` is applied, the Tavily credential is supplied to Cloud Run through Secret Manager, the updated revision is deployed, and a real production request returned advisory Tavily sources successfully without exposing the credential.
 
@@ -1160,7 +1160,7 @@ The Nebius and Tavily credentials live in Secret Manager and are read by Cloud R
 
 External Evidence Check is production-verified: migration `003_evidence_events.sql` is applied, `tavily-api-key` is supplied through Secret Manager, the updated Cloud Run revision is deployed, and a real production request returned Tavily sources successfully.
 
-Selective reasoning routing is deployed and configured, with both model IDs present on the current revision and direct access to each confirmed. Production end-to-end escalation verification is pending: no production migration has yet produced two or more concerns and triggered the second pass.
+Selective reasoning routing is deployed, configured, and verified end to end in production. A real migration produced two deterministic concerns, triggered the second Nemotron 3 Ultra pass automatically, and recorded `model_routing_decided` with `escalated: true`.
 
 A Google Cloud budget alert is a notification, not a spending cap. No GPU is provisioned in the Google Cloud deployment because Nebius Token Factory serves the NVIDIA models.
 
@@ -1223,7 +1223,7 @@ It navigates and it changes the theme. It cannot approve a plan, run a verificat
 
 - [x] Migration `003_evidence_events.sql` applied, Tavily secret configured, updated backend deployed, and a real production Tavily runtime call confirmed
 - [x] Direct Nebius Token Factory runtime access confirmed for both `nvidia/nemotron-3-super-120b-a12b` and `nvidia/Nemotron-3-Ultra-550b-a55b`
-- [ ] A production migration that triggers automatic escalation and emits `model_routing_decided` with `escalated: true`
+- [x] Production automatic escalation confirmed: `model_routing_decided` recorded `escalated: true` and selected `nvidia/Nemotron-3-Ultra-550b-a55b`
 
 ### Considered and deliberately deferred
 
