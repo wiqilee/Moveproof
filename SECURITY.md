@@ -22,7 +22,7 @@ MoveProof is a full-stack data migration application composed of:
 - Nebius Token Factory for NVIDIA model inference;
 - an optional Tavily integration for External Evidence Check.
 
-The current production MoveProof core uses the frontend, backend, PostgreSQL, Rust verifier, and Nebius Token Factory. The `robot_calibration_v1` database migration and destination-profile infrastructure are deployed, and the active backend exposes the allowlisted robotics contract. The robotics workflow is not yet described as production-verified end to end until the deployed clean, ambiguous, and multi-joint checks pass on the current revision.
+The current production MoveProof core uses the frontend, backend, PostgreSQL, Rust verifier, and Nebius Token Factory. The `robot_calibration_v1` database migration and allowlisted destination-profile infrastructure are deployed, and the robotics workflow has been exercised end to end in production with clean, ambiguous, and multi-joint fixtures. The production claim covers migration integrity under the declared contract; it does not certify calibration quality, robot behavior, or physical safety.
 
 External Evidence Check is part of the active production path only after its database migration, backend configuration, Secret Manager credential, and deployed Tavily runtime call have been verified. The current production deployment has completed those checks.
 
@@ -325,7 +325,7 @@ Before a production release:
 - confirm provider credentials do not appear in API responses or audit output;
 - confirm database migrations include `004_robotics_destination.sql` before enabling `robot_calibration_v1` in production;
 - confirm `/api/schema/profiles` exposes only the intended allowlisted profiles;
-- exercise both clean and ambiguous robotics fixtures end to end before claiming robotics production verification.
+- after changes that affect the robotics workflow, re-run the clean, ambiguous, and multi-joint fixtures end to end before renewing the production-verification claim.
 
 Do not use automated dependency upgrade commands that force breaking changes without reviewing and retesting the application.
 

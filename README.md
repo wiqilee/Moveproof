@@ -246,7 +246,7 @@ Four separate claims, kept separate because they are established by different me
 | Direct Nemotron Ultra runtime access | **Verified** | A real Nebius Token Factory request succeeded against `nvidia/Nemotron-3-Ultra-550b-a55b`, in a separate run |
 | Tavily External Evidence Check | **Verified in production** | A real deployed request returned advisory sources |
 | Deployed end-to-end automatic escalation | **Verified in production** | A real production migration triggered Super → deterministic validation → Ultra, with `model_routing_decided` recording `escalated: true` |
-| Robotics destination profile | **Production infrastructure deployed; end-to-end verification pending** | `004_robotics_destination.sql` is applied, the robotics-capable backend is active, and `/api/schema/profiles` exposes `robot_calibration_v1`; deployed clean, ambiguous, and composite-identity workflows still need to pass on the current revision before production verification is claimed. |
+| Robotics destination profile | **Verified in production end to end** | `004_robotics_destination.sql` is applied and the deployed robotics workflow has been exercised with the clean, ambiguous, and multi-joint fixtures, including Super/Ultra routing, explicit human decisions, composite identity, verified CSV export, evidence generation, fail-closed destination-conflict handling, commit, and rollback. |
 
 Production end-to-end routing is verified. A real migration first called `nvidia/nemotron-3-super-120b-a12b`; deterministic validation then identified two concerns — an explicit acknowledgement for `signup_date` and a decimal-format advisory for `balance` — and automatically escalated the same bounded sample to `nvidia/Nemotron-3-Ultra-550b-a55b`. The structured `model_routing_decided` event recorded `escalated: true` and Ultra as the selected model.
 
@@ -263,7 +263,7 @@ MoveProof distinguishes between implemented, tested, deployed, and end-to-end ve
 | Approval gates and negative cases | Yes | **Verified** | `make test-core` |
 | Deterministic executor | Yes | **Verified** | `make test-core` |
 | Verification engine | Yes | **Verified** | `make test-core` |
-| Destination profiles and robotics calibration workflow | Yes | **Verified locally; production infrastructure deployed; end-to-end verification pending** | Local robotics and PostgreSQL/API suites pass; deployed clean, ambiguous, and multi-joint workflows must still pass before claiming robotics production verification |
+| Destination profiles and robotics calibration workflow | Yes | **Verified in production end to end** | Clean, ambiguous, and multi-joint robotics migrations were exercised on the deployed stack, including model routing, human decision gates, composite `(robot_id, joint_name)` identity, exact verified export, commit behavior, and rollback |
 | Canonical hashing, Python side | Yes | **Verified** | `make test-core` |
 | Python and Rust hashing parity | Yes | **Verified** | `make rust` then `make test-core` |
 | Synthetic generator and manifest | Yes | **Verified** | `make test-core` |
@@ -295,7 +295,9 @@ Current local robotics-capable verification passes the full non-database backend
 
 The core stack is deployed and the existing customer migration workflow has been exercised end to end against it.
 
-**Scope of the production claim:** the customer workflow, automatic Super → Ultra routing, Tavily integration, robotics database migration, robotics destination registry, and robotics-capable backend infrastructure are deployed. The `robot_calibration_v1` workflow itself is not yet claimed as production-verified end to end; the current revision must complete the clean, ambiguous, and multi-joint deployed checks first.
+**Scope of the production claim:** the customer workflow, automatic Super → Ultra routing, Tavily integration, destination-profile architecture, and `robot_calibration_v1` robotics workflow have all been exercised end to end on the deployed stack. Robotics verification covers migration integrity under the declared contract; it does not certify calibration quality, robot behavior, or physical safety.
+
+Production robotics verification exercised all three dedicated fixtures: `robot_calibration_clean.csv` remained on Super and completed verification/export; `robot_calibration_ambiguous.csv` surfaced both date and decimal ambiguity, escalated to Ultra under the two-concern rule, and required explicit human decisions before execution; and `robot_calibration_multi_joint.csv` preserved composite identity so one robot can hold multiple distinct joint calibrations. Verified CSV exports preserved leading-zero robot IDs, firmware text, ISO dates, and exact decimal values, including negative decimals without output-only apostrophe prefixes. Commit was also observed failing closed on an existing destination identity, and rollback removed the rows written by the relevant migration.
 
 | Layer | Where it runs |
 | --- | --- |
@@ -1086,7 +1088,7 @@ Approval binds to a stored server-generated proposal by version and hash, so
 the plan that executes is the exact plan the reviewer saw, including one
 drafted by Nemotron Super or Ultra. The browser never sends mappings back.
 
-Status: **implemented and verified locally against the real PostgreSQL/API lifecycle, with production infrastructure deployed.** Migration `004_robotics_destination.sql` is applied and the deployed backend exposes `robot_calibration_v1`. Deployed end-to-end robotics workflow verification remains pending on the current revision.
+Status: **production-verified end to end on the deployed stack.** Migration `004_robotics_destination.sql` is applied, the deployed backend exposes `robot_calibration_v1`, and the clean, ambiguous, and multi-joint robotics workflows have been exercised through planning, human review, staging, independent verification, verified export, evidence generation, commit behavior, and rollback. This verifies migration integrity under the declared contract; it does not certify calibration quality, robot behavior, or physical safety.
 
 ---
 
@@ -1309,7 +1311,7 @@ It navigates and it changes the theme. It cannot approve a plan, run a verificat
 - [x] Direct Nebius Token Factory runtime access confirmed for both `nvidia/nemotron-3-super-120b-a12b` and `nvidia/Nemotron-3-Ultra-550b-a55b`
 - [x] Production automatic escalation confirmed: `model_routing_decided` recorded `escalated: true` and selected `nvidia/Nemotron-3-Ultra-550b-a55b`
 - [x] Apply `004_robotics_destination.sql`, deploy the robotics-capable backend/frontend, and confirm `/api/schema/profiles` exposes the allowlisted robotics profile
-- [ ] Exercise clean, ambiguous, and multi-joint robotics migrations end to end on the current deployed revision before marking robotics production verified
+- [x] Clean, ambiguous, and multi-joint robotics migrations were exercised end to end on the deployed revision, including Super/Ultra routing, explicit human decisions, composite identity, verified CSV export, evidence, fail-closed destination-conflict handling, commit behavior, and rollback
 
 ### Considered and deliberately deferred
 

@@ -66,6 +66,20 @@ export default function DocsPage() {
           </p>
         </Section>
 
+        <Section title="One source file per migration">
+          <p>
+            MoveProof deliberately processes one source file per migration. This keeps
+            the source checksum, approved plan, execution run, verification results,
+            evidence artifacts, commit and rollback isolated under one auditable
+            migration record.
+          </p>
+          <p>
+            When one migration is finished, start a new migration for the next source
+            file. Related files are not silently merged into a single execution scope.
+            This keeps failures and rollback boundaries explicit.
+          </p>
+        </Section>
+
         <Section title="Destination contracts">
           <p>
             MoveProof currently exposes two server-defined destination profiles:
@@ -87,6 +101,24 @@ export default function DocsPage() {
             A passed robotics migration verifies those approved data invariants. It
             does not determine whether a calibration value is physically correct,
             command a robot, or certify hardware safety.
+          </p>
+        </Section>
+
+        <Section title="Production verification status">
+          <p>
+            The deployed <span className="font-mono">robot_calibration_v1</span>
+            workflow has been exercised end to end with the clean, ambiguous and
+            multi-joint robotics fixtures. The clean path remained on Nemotron 3
+            Super, the ambiguous path exercised deterministic escalation to Nemotron
+            3 Ultra and explicit human decisions, and the multi-joint path preserved
+            composite <span className="font-mono">(robot_id, joint_name)</span>
+            identity.
+          </p>
+          <p>
+            Production checks also exercised verified CSV export, evidence generation,
+            commit behavior, fail-closed destination conflicts and rollback. This
+            status is evidence about migration integrity, not a statement that
+            MoveProof validated physical calibration quality or robot safety.
           </p>
         </Section>
 

@@ -60,7 +60,7 @@ A real Nebius Token Factory inference call has been verified with the production
 
 Adaptive Super-to-Ultra routing is production-verified. A real model-assisted migration produced two deterministic validator concerns, triggered the Ultra pass, and recorded `model_routing_decided` with `escalated: true`.
 
-The `robot_calibration_v1` destination infrastructure is now deployed: `004_robotics_destination.sql` is applied, the robotics-capable Cloud Run backend is active, and `/api/schema/profiles` exposes the allowlisted robotics profile. The robotics workflow itself remains **end-to-end production verification pending** until the clean, ambiguous, and multi-joint checks pass on the current deployed revision.
+The `robot_calibration_v1` destination profile is **production-verified end to end** on the deployed stack. `004_robotics_destination.sql` is applied, the robotics-capable Cloud Run backend is active, `/api/schema/profiles` exposes the allowlisted robotics profile, and the clean, ambiguous, and multi-joint workflows have been exercised through verification, verified export, evidence, commit behavior, destination-conflict fail-closed behavior, and rollback.
 
 ### External Evidence Check status
 
@@ -808,7 +808,7 @@ On the deployed robotics-capable revision:
 5. Confirm evidence names the destination profile and preserves the limitation that data verification is not hardware-safety certification.
 6. Re-run a customer migration to prove profile isolation and backward compatibility.
 
-Only after all six checks pass against the deployed backend should robotics be described as production-verified.
+The current production deployment has passed these robotics checks. Repeat them after changes that can affect planning, routing, execution, verification, export, commit, destination identity, or rollback before renewing the production-verification claim for a new revision.
 
 ## 20. Local validation before deployment
 
@@ -842,7 +842,7 @@ git diff --check
 
 Do not deploy if required database migrations, backend tests, routing tests, frontend type checking, or the production build fail.
 
-Model-routing tests prove the routing rule and safety boundaries. The automatic Super-to-Ultra path has also been exercised in production, but robotics still requires its own deployed clean and ambiguous end-to-end verification.
+Model-routing tests prove the routing rule and safety boundaries. The automatic Super-to-Ultra path and the robotics clean, ambiguous, and multi-joint workflows have also been exercised on the deployed production stack.
 
 Mocked Tavily tests prove application behavior around the provider boundary. They do not replace a real provider runtime check.
 
@@ -940,4 +940,4 @@ Before treating the robotics-capable deployment as fully verified, confirm:
 
 The core customer workflow, Tavily External Evidence Check, and automatic Super → Ultra reasoning escalation are already production-verified.
 
-`robot_calibration_v1` should only be described as **production-verified end to end** after item 10 and items 12 through 22 have been exercised against the deployed robotics-capable revision.
+`robot_calibration_v1` is currently **production-verified end to end** on the deployed robotics-capable revision. The relevant production checks, including the deployed database migration, immutable backend revision, clean path, ambiguous Super-to-Ultra path, composite identity, exact verified export, fail-closed destination conflict behavior, evidence, commit, and rollback, have been exercised. Repeat the checklist after relevant implementation or infrastructure changes.
