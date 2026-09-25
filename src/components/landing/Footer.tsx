@@ -47,8 +47,8 @@ export function Footer() {
           <div>
             <Logo href={routes.home} />
             <p className="mt-3.5 max-w-xs text-sm leading-relaxed text-ink-soft">
-              An AI assisted data migration workspace that verifies its own work and shows you the
-              evidence.
+              A verification-first migration workspace for customer data and robot calibration
+              contracts, with independent evidence of what changed.
             </p>
             <div className="mt-5 flex items-center gap-1">
               {socialIcons.map(({ link, Icon, label }) =>

@@ -206,7 +206,7 @@ export default function OverviewPage() {
                   <>
                     <p className="truncate text-sm font-medium">{row.filename}</p>
                     <p className="mt-1 truncate font-mono text-xs text-ink-soft">
-                      {row.id.slice(0, 8)} · {row.row_count} rows · {stateLabel(row)}
+                      {row.id.slice(0, 8)} · {row.destination_profile ?? "customers_v1"} · {row.row_count} rows · {stateLabel(row)}
                     </p>
                   </>
                 );

@@ -20,8 +20,9 @@ export function Hero() {
             </h1>
 
             <p className="mt-6 max-w-md text-base leading-relaxed text-ink-soft sm:text-[17px]">
-              A successful import is not the same as a correct one. MoveProof checks the
-              transformation against an approved contract and shows you the evidence either way.
+              A successful import is not the same as a correct one. MoveProof verifies approved
+              destination contracts across customer data and per-joint robot calibration migrations,
+              then shows you the evidence either way.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -41,7 +42,7 @@ export function Hero() {
             </div>
 
             <p className="mt-6 text-xs leading-relaxed text-ink-soft">
-  The preview on this page is synthetic. Live migrations in the workspace use the deployed backend, database, verifier, and configured model routing.
+  The preview on this page is a synthetic customer migration. The same verification-first workflow also supports the robot calibration destination contract; live migrations use the deployed backend, database, verifier, and configured model routing.
 </p>
           </div>
 

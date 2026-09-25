@@ -69,7 +69,7 @@ export default function ReportsPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{row.filename}</p>
                   <p className="mt-1 truncate font-mono text-[11px] text-ink-soft">
-                    {row.id.slice(0, 8)} · plan v{row.approved_plan_version} ·{" "}
+                    {row.id.slice(0, 8)} · {row.destination_profile ?? "customers_v1"} · plan v{row.approved_plan_version} ·{" "}
                     {row.committed_at ? "committed" : "staged"}
                   </p>
                 </div>

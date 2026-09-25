@@ -40,9 +40,10 @@ export default function DocsPage() {
           flagged it because nothing was technically invalid.
           </p>
           <p>
-            MoveProof moves spreadsheet data into a structured database and
-            then checks, with code that had no part in writing the
-            transformation, whether the values survived.
+            MoveProof moves spreadsheet data into an explicit destination
+            contract and then checks, with code that had no part in writing the
+            transformation, whether the values survived. The same architecture
+            currently serves customer migrations and per-joint robot calibration data.
           </p>
         </Section>
 
@@ -53,18 +54,40 @@ export default function DocsPage() {
             review item, approving a repair, and committing.
           </p>
           <p>
+            Nemotron 3 Super proposes the initial mapping. MoveProof then validates
+            that proposal deterministically. When the validator detects multiple
+            independent concerns, the same bounded context may be selectively
+            escalated to Nemotron 3 Ultra for deeper reasoning. Validated code
+            executes exactly what you approved. An independent verifier determines
+            what actually happened, and you approve anything ambiguous. When field
+            semantics are unclear, External Evidence Check can retrieve advisory
+            public references to help inform that decision without changing
+            verification results or commit eligibility.
+          </p>
+        </Section>
+
+        <Section title="Destination contracts">
           <p>
-  Nemotron 3 Super proposes the initial mapping. MoveProof then validates
-  that proposal deterministically. When the validator detects multiple
-  independent concerns, the same bounded context may be selectively
-  escalated to Nemotron 3 Ultra for deeper reasoning. Validated code
-  executes exactly what you approved. An independent verifier determines
-  what actually happened, and you approve anything ambiguous. When field
-  semantics are unclear, External Evidence Check can retrieve advisory
-  public references to help inform that decision without changing
-  verification results or commit eligibility.
-</p>
-</p>
+            MoveProof currently exposes two server-defined destination profiles:
+            <span className="font-mono"> customers_v1</span> for customer records and
+            <span className="font-mono"> robot_calibration_v1</span> for per-joint
+            calibration records. The selected profile is stored with the migration,
+            so planning, execution, verification, evidence, export, commit and rollback
+            resolve the same contract.
+          </p>
+          <p>
+            Robotics row identity is the composite key
+            <span className="font-mono"> (robot_id, joint_name)</span>. The verifier
+            separately checks that identifier-like values such as
+            <span className="font-mono"> 0017</span> and firmware text such as
+            <span className="font-mono"> 3.08</span> survive the move, while ambiguous
+            dates and decimal conventions require an explicit human decision.
+          </p>
+          <p>
+            A passed robotics migration verifies those approved data invariants. It
+            does not determine whether a calibration value is physically correct,
+            command a robot, or certify hardware safety.
+          </p>
         </Section>
 
         <Section title="Supported files">
@@ -101,7 +124,8 @@ export default function DocsPage() {
             held. It does not mean every possible semantic error has been ruled
             out. Aggregate reconciliation against a source of truth ledger and
             referential integrity with other tables are outside the current
-            contract, and the report says so rather than staying quiet.
+            contract, and the report says so rather than staying quiet. For robotics,
+            migration verification is explicitly not a hardware-safety certification.
           </p>
         </Section>
 
@@ -236,7 +260,9 @@ export default function DocsPage() {
         <p>
          The original uploaded bytes are stored alongside the parsed rows so
          a repair has an authoritative source and a checksum can be
-         recomputed later.
+         recomputed later. Robot calibration files can contain operationally
+         sensitive values and are handled under the same private-data boundary
+         as every other uploaded dataset.
         </p>
         <p>
          Deleting an uncommitted or already rolled-back migration removes

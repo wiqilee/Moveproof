@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, Minus, RefreshCw } from "lucide-react";
 import { TopBar } from "@/components/workspace/TopBar";
 import { PageHeading } from "@/components/workspace/PageHeading";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { useMigration } from "@/lib/migration-store";
 import { useTheme } from "@/lib/theme";
-import { API_BASE_URL } from "@/lib/api-client";
+import { API_BASE_URL, api } from "@/lib/api-client";
+import type { ApiDestinationProfile } from "@/lib/api-types";
 import { routes } from "@/lib/routes";
 
 /**
@@ -20,9 +21,24 @@ import { routes } from "@/lib/routes";
 export default function SettingsPage() {
   const { health, refreshHealth } = useMigration();
   const { preference, resolved } = useTheme();
+  const [destinationProfiles, setDestinationProfiles] = useState<ApiDestinationProfile[]>([]);
+  const [defaultDestinationProfile, setDefaultDestinationProfile] = useState<string | null>(null);
+  const [profilesReachable, setProfilesReachable] = useState<boolean | null>(null);
 
   useEffect(() => {
     void refreshHealth();
+    void api
+      .destinationProfiles()
+      .then((result) => {
+        setDestinationProfiles(result.profiles);
+        setDefaultDestinationProfile(result.default);
+        setProfilesReachable(true);
+      })
+      .catch(() => {
+        setDestinationProfiles([]);
+        setDefaultDestinationProfile(null);
+        setProfilesReachable(false);
+      });
   }, [refreshHealth]);
 
   const capabilities = [
@@ -69,7 +85,7 @@ export default function SettingsPage() {
       <main className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-7">
         <PageHeading
           title="Settings"
-          description="Workspace preferences and the current state of every backend capability."
+          description="Workspace preferences, backend capabilities, and the destination contracts exposed by the current backend revision."
         />
 
         <section className="mb-6 rounded-card border border-line bg-surface p-5">
@@ -128,6 +144,43 @@ export default function SettingsPage() {
               </li>
             ))}
           </ul>
+        </section>
+
+        <section className="mb-6 rounded-card border border-line bg-surface p-5">
+          <h2 className="text-[15px] font-semibold">Destination contracts</h2>
+          <p className="mt-1 text-sm leading-relaxed text-ink-soft">
+            Loaded from the backend profile registry. Unknown profile IDs are refused rather than
+            converted into database table or column names.
+          </p>
+
+          {profilesReachable === null ? (
+            <p className="mt-4 text-sm text-ink-soft">Loading destination contracts…</p>
+          ) : profilesReachable && destinationProfiles.length > 0 ? (
+            <ul className="mt-4 divide-y divide-line border-y border-line">
+              {destinationProfiles.map((profile) => (
+                <li key={profile.id} className="py-3">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <p className="text-sm font-medium">
+                      {profile.display_name}
+                      {profile.id === defaultDestinationProfile && (
+                        <span className="ml-2 text-xs font-normal text-brand">default</span>
+                      )}
+                    </p>
+                    <span className="font-mono text-[11px] text-ink-soft">{profile.id}</span>
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-ink-soft">{profile.description}</p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft">
+                    {profile.destination_table} · schema v{profile.schema_version} · {profile.column_count} columns
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-4 text-sm leading-relaxed text-ink-soft">
+              The current backend revision does not expose destination profiles yet. This is expected
+              until the robotics-capable backend and migration 004 are deployed.
+            </p>
+          )}
         </section>
 
         <section className="rounded-card border border-line bg-surface p-5">

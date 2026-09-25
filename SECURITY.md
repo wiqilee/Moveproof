@@ -17,11 +17,12 @@ MoveProof is a full-stack data migration application composed of:
 - a Next.js frontend;
 - a FastAPI backend;
 - PostgreSQL;
+- a server-side destination-profile registry for allowlisted customer and robot-calibration contracts;
 - a Rust verification component;
 - Nebius Token Factory for NVIDIA model inference;
 - an optional Tavily integration for External Evidence Check.
 
-The current production MoveProof core uses the frontend, backend, PostgreSQL, Rust verifier, and Nebius Token Factory.
+The current production MoveProof core uses the frontend, backend, PostgreSQL, Rust verifier, and Nebius Token Factory. The `robot_calibration_v1` destination profile is implemented and verified locally and in CI, but it is not production-verified until migration `004_robotics_destination.sql`, the robotics-capable backend revision, and deployed end-to-end robotics checks are complete.
 
 External Evidence Check is part of the active production path only after its database migration, backend configuration, Secret Manager credential, and deployed Tavily runtime call have been verified. The current production deployment has completed those checks.
 
@@ -33,6 +34,7 @@ MoveProof processes uploaded spreadsheets that may contain sensitive information
 
 - original uploaded source bytes;
 - parsed source rows;
+- destination-profile selection and contract metadata;
 - approved transformation plans;
 - staged transformed rows;
 - verification results;
@@ -109,6 +111,14 @@ Database access uses parameterized SQL and least-privilege credentials.
 Workflow state, verification results, commit records, rollback state, and destination writes are enforced server-side.
 
 A client-side control cannot bypass the database-backed commit gate.
+
+### Destination profiles are server allowlisted
+
+Destination profile IDs supplied by a client are resolved through the server-side profile registry.
+
+A profile ID is never treated as an arbitrary SQL table or column identifier. Destination table names, staging table names, key columns, verification fields, and schema definitions come from the allowlisted registry, and an unknown profile is refused.
+
+For `robot_calibration_v1`, row identity is the composite key `(robot_id, joint_name)`. `robot_id` is also checked separately as an identifier-preservation field so a value such as `0017` cannot silently become `17` merely because the destination accepts both strings.
 
 ### Full datasets are not sent to the model
 
@@ -194,6 +204,12 @@ MoveProof distinguishes four verification outcomes:
 
 External evidence does not alter any of these outcomes.
 
+### Robotics verification is not hardware safety certification
+
+A passed `robot_calibration_v1` migration means the approved data invariants held across the migration. It does not establish that a calibration value is physically correct, that a robot is safe to operate, or that MoveProof evaluated hardware behavior.
+
+MoveProof does not command robots. Its robotics scope is the integrity and auditability of calibration data as that data moves between structured systems.
+
 ### Commit fails closed
 
 A migration cannot be committed merely because execution completed.
@@ -242,6 +258,8 @@ The deployed architecture separates responsibilities as follows:
 - Nebius Token Factory provides NVIDIA model inference.
 - Tavily provides external public-reference discovery when External Evidence Check is enabled.
 
+Adding `robot_calibration_v1` does not add a provider, secret, browser credential, IAM role, or model authority. It adds a server-defined data contract and destination tables inside the existing trust boundaries.
+
 The production NVIDIA model is:
 
 `nvidia/nemotron-3-super-120b-a12b`
@@ -265,6 +283,8 @@ Do not upload production data unless the deployment operator has reviewed the en
 The public hackathon deployment should be treated as a demonstration environment unless explicitly operated under a separate production data policy.
 
 Synthetic fixtures are the recommended data source for demonstrations and public testing.
+
+Robot calibration datasets can be operationally sensitive even when they contain no personal data. Treat robot IDs, firmware identifiers, sensor-frame names, offsets, ratios, and calibration dates as sensitive operational data unless the deployment operator has explicitly classified them otherwise.
 
 ## Third-Party Data Boundaries
 
@@ -300,7 +320,10 @@ Before a production release:
 - verify the live health endpoint;
 - verify Nebius through a real runtime inference call;
 - verify Tavily through a real runtime External Evidence Check if the feature is enabled;
-- confirm provider credentials do not appear in API responses or audit output.
+- confirm provider credentials do not appear in API responses or audit output;
+- confirm database migrations include `004_robotics_destination.sql` before enabling `robot_calibration_v1` in production;
+- confirm `/api/schema/profiles` exposes only the intended allowlisted profiles;
+- exercise both clean and ambiguous robotics fixtures end to end before claiming robotics production verification.
 
 Do not use automated dependency upgrade commands that force breaking changes without reviewing and retesting the application.
 
@@ -310,7 +333,7 @@ MoveProof reduces specific classes of migration risk. It does not claim to detec
 
 A successful verification means the invariants defined by the approved migration contract were satisfied.
 
-It does not mean that every possible property of the dataset was proven correct.
+It does not mean that every possible property of the dataset was proven correct. For robotics, it also does not mean that MoveProof certified calibration quality, robot behavior, or physical safety.
 
 External evidence can help a reviewer investigate semantic ambiguity, but it is not proof that a proposed interpretation is correct.
 

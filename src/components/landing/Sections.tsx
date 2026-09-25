@@ -11,6 +11,7 @@ const FAILURE_MODES = [
   { before: "00127", after: "127", cause: "An integer cast strips a leading zero" },
   { before: "03/04/2024", after: "2024-03-04", cause: "A locale guess turns 3 April into 4 March" },
   { before: "1200.50", after: "1200.4999", cause: "A float conversion loses a fraction of a cent" },
+  { before: "firmware 3.08", after: "3.8", cause: "A numeric coercion changes a robot firmware identifier" },
   { before: "2 rows", after: "1 row", cause: "A duplicate is dropped without an agreed policy" },
 ];
 
@@ -29,8 +30,9 @@ export function ProblemSection() {
               That is not the same as the data surviving.
             </h2>
             <p className="mt-5 max-w-md text-[15px] leading-relaxed text-ink-soft">
-              None of the failures on the right raise an error. Row counts match, the log reads
-              clean, and the damage surfaces months later when an invoice reaches the wrong person.
+              None of the failures on the right have to raise an error. Row counts can match and
+              logs can stay clean while a customer identifier, a date, or robot calibration metadata
+              silently changes meaning.
             </p>
             <p className="mt-4 max-w-md text-[15px] leading-relaxed text-ink-soft">
               The people doing this work are usually operations staff and consultants rather than
@@ -71,7 +73,7 @@ export function ProblemSection() {
 const STAGES = [
   {
     title: "Inspect your data",
-    body: "Upload a CSV or XLSX file and read the real rows, the inferred types and the values that will cause trouble.",
+    body: "Choose the customer or robot calibration destination contract, upload a CSV or XLSX file, and inspect the real rows, inferred types, and values that may cause trouble.",
     detail: "5 rows read · 4 hazards flagged",
   },
   {
@@ -103,8 +105,9 @@ export function HowItWorks() {
             Eight stages run end to end
           </h2>
           <p className="mt-4 text-[15px] leading-relaxed text-ink-soft">
-            Inspect, plan, review, stage, verify, repair, commit, report. Four of those stages
-            require an explicit decision from you.
+            Customer records and robot calibration data use the same eight-stage path: inspect,
+            plan, review, stage, verify, repair, commit, report. Four stages require an explicit
+            decision from you.
           </p>
         </div>
 
@@ -220,7 +223,8 @@ export function Approach() {
           <p className="text-sm leading-relaxed text-ink-soft">
             A passed verification means the invariants in the approved contract held. It does not
             mean every possible semantic error has been ruled out, and the evidence report says so
-            in its own limitations section.
+            in its own limitations section. For robot calibration migrations, this verifies the data
+            migration contract; it does not certify calibration correctness or hardware safety.
           </p>
         </div>
       </div>
@@ -250,10 +254,10 @@ export function Technology() {
               Validated code executes.
             </h2>
             <p className="mt-5 max-w-md text-[15px] leading-relaxed text-ink-soft">
-              The architecture treats model output as untrusted input. Proposals are validated
-              against an allowlist of supported operations, executed exactly as approved in an
-              isolated staging schema, and then checked by an independent verifier before any
-              commit is allowed.
+              The architecture treats model output as untrusted input. Destination profiles are
+              resolved through a server-side registry, proposals are validated against an allowlist
+              of supported operations, execution follows the exact approved contract in isolated
+              staging, and an independent verifier checks the result before commit is allowed.
             </p>
             <p className="mt-4 max-w-md text-[15px] leading-relaxed text-ink-soft">
   Model-assisted reasoning runs through Nebius Token Factory. Nemotron 3 Super
@@ -261,9 +265,16 @@ export function Technology() {
   escalate harder cases to Nemotron 3 Ultra. Both passes use the same bounded context:
   a schema summary and a small sample of rows. Full datasets are never sent to either model.
 </p>
+            <p className="mt-4 max-w-md text-[15px] leading-relaxed text-ink-soft">
+              The same deterministic execution and independent verification path serves
+              <span className="font-mono text-[13px]"> customers_v1</span> and
+              <span className="font-mono text-[13px]"> robot_calibration_v1</span>. The robotics
+              contract checks migration invariants such as composite row identity, preserved IDs,
+              firmware text, decimals, and approved date interpretation; it does not evaluate robot safety.
+            </p>
           </div>
 
-          <div className="rounded-card border border-line bg-surface p-6">
+          <div className="self-start rounded-card border border-line bg-surface p-6">
             <h3 className="text-sm font-semibold">What is running in this build</h3>
             <ul className="mt-4 space-y-2.5">
               {live.map((item) => (
@@ -311,8 +322,8 @@ export function ClosingCta() {
           See what your migration actually changed.
         </h2>
         <p className="mx-auto mt-4 max-w-lg text-[15px] leading-relaxed text-on-navy/75">
-          Walk the full workflow on the synthetic dataset, from the proposed plan to the failed
-          invariant, repair, verification, and final evidence report.
+          Walk the verification-first workflow with synthetic customer or robotics fixtures,
+          from the proposed plan through human review, verification, commit, and final evidence.
         </p>
         <Link
           href={routes.workspace}

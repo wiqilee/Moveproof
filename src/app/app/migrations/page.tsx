@@ -39,7 +39,9 @@ export default function MigrationsPage() {
   const visible = term
     ? migrations.filter(
         (row) =>
-          row.filename.toLowerCase().includes(term) || row.id.includes(term)
+          row.filename.toLowerCase().includes(term) ||
+          row.id.includes(term) ||
+          (row.destination_profile ?? "customers_v1").toLowerCase().includes(term)
       )
     : migrations;
 
@@ -51,7 +53,7 @@ export default function MigrationsPage() {
       <main className="mx-auto w-full max-w-5xl px-5 py-8 sm:px-7">
         <PageHeading
           title="Migrations"
-          description="Every migration in this workspace, with its plan version and latest run."
+          description="Every migration in this workspace, including its destination contract, plan version, and latest run."
           action={
             <Link
               href={routes.newMigration}
@@ -133,10 +135,10 @@ export default function MigrationsPage() {
         ) : (
           <div className="overflow-hidden rounded-card border border-line bg-surface">
             <div className="table-scroll">
-              <table className="w-full min-w-[760px] border-collapse text-sm">
+              <table className="w-full min-w-[860px] border-collapse text-sm">
                 <thead>
                   <tr className="bg-muted/60">
-                    {["Source file", "Rows", "Plan", "Latest run", "State", ""].map((header) => (
+                    {["Source file", "Destination", "Rows", "Plan", "Latest run", "State", ""].map((header) => (
                       <th
                         key={header}
                         scope="col"
@@ -162,6 +164,9 @@ export default function MigrationsPage() {
                         <p className="mt-0.5 font-mono text-[11px] text-ink-soft">
                           {row.id.slice(0, 8)} · {new Date(row.created_at).toLocaleDateString()}
                         </p>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-[11px] text-ink-soft">
+                        {row.destination_profile ?? "customers_v1"}
                       </td>
                       <td className="px-4 py-3 font-mono">{row.row_count}</td>
                       <td className="px-4 py-3 font-mono text-ink-soft">

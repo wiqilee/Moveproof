@@ -19,7 +19,7 @@ export const SITE = {
   name: "MoveProof",
   tagline: "Move data. Prove what changed.",
   description:
-    "An AI-assisted data migration workspace that turns messy spreadsheets into structured database records with model-assisted mapping, deterministic execution, independent verification, and auditable evidence.",
+    "A verification-first workspace for structured-data migrations, including customer records and robot calibration contracts, with model-assisted mapping, deterministic execution, independent verification, and auditable evidence.",
 } as const;
 
 export const AUTHOR = {
@@ -83,6 +83,7 @@ export const HACKATHON = {
  */
 export const IMPLEMENTATION_STATUS: { label: string; state: "live" | "planned" }[] = [
   { label: "Plan versioning and operation allowlist", state: "live" },
+  { label: "Destination profiles for customer and robot calibration data", state: "live" },
   { label: "Independent verification engine with four result categories", state: "live" },
   { label: "Discrepancy explorer and auditable evidence reports", state: "live" },
   { label: "Verified CSV export from stored verified data", state: "live" },

@@ -80,7 +80,7 @@ export function HeroPreview() {
   return (
     <div className="overflow-hidden rounded-card border border-line bg-surface shadow-lift">
       <div className="flex items-center justify-between gap-3 border-b border-line bg-muted/60 px-4 py-2.5">
-        <p className="font-mono text-[11px] text-ink-soft">MOV-2026-0091 · plan v1 · run 1</p>
+        <p className="font-mono text-[11px] text-ink-soft">customers_v1 · MOV-2026-0091 · plan v1 · run 1</p>
         <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-soft">
           Synthetic preview
         </p>

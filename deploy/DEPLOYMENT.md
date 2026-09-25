@@ -58,7 +58,9 @@ upload
 
 A real Nebius Token Factory inference call has been verified with the production Super model. Direct runtime access to the Ultra model has also been verified separately through Token Factory.
 
-The adaptive Super-to-Ultra routing path is implemented in the repository. It should only be described as **production-verified** after the updated Cloud Run revision is deployed and a real model-assisted migration produces enough deterministic validator concerns to trigger the Ultra pass.
+Adaptive Super-to-Ultra routing is production-verified. A real model-assisted migration produced two deterministic validator concerns, triggered the Ultra pass, and recorded `model_routing_decided` with `escalated: true`.
+
+The new `robot_calibration_v1` destination profile is implemented, locally verified against PostgreSQL/API lifecycle tests, and present in the frontend build. It is **not** production-verified until migration `004_robotics_destination.sql` is applied to Cloud SQL, a robotics-capable Cloud Run revision is active, and clean plus ambiguous robotics migrations are exercised end to end.
 
 ### External Evidence Check status
 
@@ -255,11 +257,19 @@ The Tavily feature introduced:
 003_evidence_events.sql
 ```
 
-It adds nullable structured event fields to the existing audit-event table. Existing rows remain valid, and the migration is designed to be safe to rerun through the normal migration runner.
+The destination-profile and robotics feature introduces:
 
-Adaptive model routing does not require a new database migration. It records routing information through the existing audit path.
+```text
+004_robotics_destination.sql
+```
 
-Apply all migrations before starting an updated backend revision.
+`004_robotics_destination.sql` adds the profile field used by migrations plus the robotics staging and destination structures required by `robot_calibration_v1`. Existing migrations remain backward compatible because an older row with no profile resolves to `customers_v1` in application logic.
+
+`003_evidence_events.sql` adds nullable structured event fields to the existing audit-event table. Existing rows remain valid, and both migrations are applied through the normal ordered migration runner.
+
+Adaptive model routing does not require its own database migration. It records routing information through the existing audit path.
+
+Apply all migrations, and confirm `004_robotics_destination.sql` is recorded as applied, before starting a robotics-capable backend revision.
 
 ## 4. Store secrets
 
@@ -368,7 +378,17 @@ gcloud builds submit \
 
 The build compiles the backend image and Rust verifier according to the repository configuration and publishes the resulting image to Artifact Registry.
 
-Do not replace this command with an unrelated Docker build path unless `deploy/cloudbuild.yaml` itself changes.
+The build configuration currently publishes `backend:latest`. Do not deploy that mutable tag directly. Resolve it to the immutable digest produced by the build and pin Cloud Run to that digest:
+
+```bash
+IMAGE_LATEST="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/moveproof/backend:latest"
+IMAGE_DIGEST=$(gcloud artifacts docker images describe "$IMAGE_LATEST"   --project="$GCP_PROJECT_ID"   --format='value(image_summary.digest)')
+IMAGE_REF="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/moveproof/backend@$IMAGE_DIGEST"
+
+printf 'Pinned backend image: %s\n' "$IMAGE_REF"
+```
+
+Do not replace the repository build path unless `deploy/cloudbuild.yaml` itself changes.
 
 ## 8. Configure and deploy Cloud Run
 
@@ -400,6 +420,7 @@ Resolve the deployment placeholders:
 sed \
   -e "s/PROJECT_ID/$GCP_PROJECT_ID/g" \
   -e "s/REGION/$GCP_REGION/g" \
+  -e "s#REGION-docker.pkg.dev/PROJECT_ID/moveproof/backend:latest#$IMAGE_REF#g" \
   deploy/cloudrun.yaml \
   > /tmp/cloudrun.resolved.yaml
 ```
@@ -420,6 +441,18 @@ gcloud run services replace \
   --region="$GCP_REGION" \
   --project="$GCP_PROJECT_ID"
 ```
+
+Confirm that Cloud Run actually created or selected the intended revision and that the revision points at the pinned digest:
+
+```bash
+LATEST_REVISION=$(gcloud run services describe moveproof-backend   --region="$GCP_REGION"   --project="$GCP_PROJECT_ID"   --format='value(status.latestReadyRevisionName)')
+
+echo "$LATEST_REVISION"
+
+gcloud run revisions describe "$LATEST_REVISION"   --region="$GCP_REGION"   --project="$GCP_PROJECT_ID"   --format='value(spec.containers[0].image)'
+```
+
+Do not treat a deploy command that reused a mutable `:latest` reference as proof that the running backend changed. The revision and image check above is part of deployment verification.
 
 The escalation model uses the same Nebius API key and the same Token Factory endpoint as the primary model. No additional secret is required.
 
@@ -471,13 +504,13 @@ A healthy production revision should report the established backend capabilities
 
 A health response showing that Nebius or Tavily is configured proves configuration presence only. It does not prove that an upstream runtime call succeeded.
 
-Real Nebius, Tavily, and adaptive-routing behavior must be verified separately.
+Health alone does not prove upstream behavior. Use the runtime checks below after relevant deployment changes; the current production customer workflow, Tavily call, and automatic Super-to-Ultra routing have already completed those checks.
 
 ## 11. Verify adaptive model routing
 
-Direct Ultra smoke testing proves model access. This section proves the **routing path**.
+Direct Ultra smoke testing proves model access. The production automatic routing path has already been exercised successfully; use this section to re-verify it after a backend revision that changes routing or model configuration.
 
-First, deploy the updated backend with both model IDs configured.
+Deploy the updated backend with both model IDs configured before re-running the check.
 
 Then create a model-assisted migration that produces multiple independent validator concerns. The repository includes:
 
@@ -521,7 +554,7 @@ Finally, test the fallback:
 2. confirm the model-assisted workflow still works with Super only; and
 3. confirm the routing record states that escalation was unavailable rather than pretending no signal occurred.
 
-Only after a real deployed migration triggers the Ultra path should the adaptive routing feature be described as **production-verified end to end**.
+The current production deployment has already satisfied this condition with a real migration that recorded `model_routing_decided`, `escalated: true`, and Nemotron 3 Ultra as the selected model. Re-run this check after routing-affecting deployment changes rather than assuming the previous result covers a new revision.
 
 ## 12. Deploy the frontend
 
@@ -762,19 +795,33 @@ Direct Token Factory access to the Ultra model has also been verified separately
 
 Tavily External Evidence Check has been verified through a real production runtime call.
 
-Adaptive Super-to-Ultra routing still requires one deployed end-to-end escalation check after the new revision is deployed.
+Adaptive Super-to-Ultra routing has been verified end to end in production. Robotics remains a separate production claim and must not be marked verified until the robotics checks below pass on the deployed revision.
+
+### Robotics production verification
+
+After `004_robotics_destination.sql` and the robotics-capable backend are deployed:
+
+1. `GET /api/schema/profiles` must expose `customers_v1` and `robot_calibration_v1`, with `customers_v1` remaining the default for backward compatibility.
+2. Run `robot_calibration_clean.csv` through `robot_calibration_v1`. The clean model-assisted path should stay on Super, then stage, verify, export, commit, produce evidence, and roll back normally.
+3. Run `robot_calibration_ambiguous.csv`. Its ambiguous date plus mixed decimal convention should surface two deterministic concerns, exercise Super → Ultra when escalation is configured, and keep approval blocked until the reviewer explicitly resolves date and decimal policy.
+4. Run `robot_calibration_multi_joint.csv` and confirm repeated `robot_id` values with different joints are accepted under composite identity `(robot_id, joint_name)`.
+5. Confirm evidence names the destination profile and preserves the limitation that data verification is not hardware-safety certification.
+6. Re-run a customer migration to prove profile isolation and backward compatibility.
+
+Only after all six checks pass against the deployed backend should robotics be described as production-verified.
 
 ## 20. Local validation before deployment
 
-After merging the adaptive-routing changes, run the backend suite from `backend/`:
+Before a robotics-capable backend deployment, run the backend suite from `backend/`:
 
 ```bash
 source .venv/bin/activate
 
 make migrate
-make test-core
-make test-db
-pytest tests/test_model_routing.py -v
+pytest -m "not database" -v
+DATABASE_URL="postgresql://moveproof:moveproof_local_only@localhost:5433/moveproof"   pytest -m database -v
+pytest tests/test_model_routing.py tests/test_robotics_workflow.py   tests/test_robotics_verification.py tests/test_destination_profiles.py -v -m "not database"
+make rust-test
 ```
 
 If the full runnable suite is available in the local environment, run it as well:
@@ -795,7 +842,7 @@ git diff --check
 
 Do not deploy if required database migrations, backend tests, routing tests, frontend type checking, or the production build fail.
 
-Mocked model-routing tests prove the routing rule and safety boundaries. They do not replace a real deployed Super-to-Ultra escalation test.
+Model-routing tests prove the routing rule and safety boundaries. The automatic Super-to-Ultra path has also been exercised in production, but robotics still requires its own deployed clean and ambiguous end-to-end verification.
 
 Mocked Tavily tests prove application behavior around the provider boundary. They do not replace a real provider runtime check.
 
@@ -860,38 +907,37 @@ If an adaptive-routing deployment has an operational problem, rolling back to th
 
 ## 23. Production readiness checklist
 
-Before treating the current deployment as fully verified after the adaptive-routing update, confirm:
+Before treating the robotics-capable deployment as fully verified, confirm:
 
 1. The Vercel production URL loads successfully.
-2. The frontend uses the correct Cloud Run backend.
+2. The frontend uses the intended Cloud Run backend.
 3. `/health` reports PostgreSQL connected.
 4. `/health` reports the Rust verifier available.
 5. JSON, HTML, and PDF evidence capabilities are available.
 6. A real Super inference request succeeds through Nebius Token Factory.
 7. Direct runtime access to `nvidia/Nemotron-3-Ultra-550b-a55b` succeeds.
-8. `NEBIUS_BASE_URL` is `https://api.tokenfactory.nebius.com/v1`.
-9. `NEBIUS_MODEL_ID` is `nvidia/nemotron-3-super-120b-a12b`.
-10. `NEBIUS_ESCALATION_MODEL_ID` is `nvidia/Nemotron-3-Ultra-550b-a55b`.
-11. A routine model-assisted migration remains on Super.
-12. A real ambiguous model-assisted migration with at least two validator concerns triggers Ultra.
-13. The `model_routing_decided` audit event records the routing decision.
-14. Removing the escalation model ID returns the application to safe Super-only behavior.
-15. An escalation-provider failure does not grant execution, approval, verification, or commit authority.
-16. Database migrations include `003_evidence_events.sql`.
-17. `tavily-api-key` exists in Secret Manager.
-18. Cloud Run receives the Tavily secret without exposing it publicly.
-19. A real External Evidence Check returns normalized Tavily advisory sources.
-20. No Tavily credential appears in the response or audit metadata.
-21. Running External Evidence Check does not change verification state.
-22. Running External Evidence Check does not change commit eligibility.
-23. Upload, staging, verification, repair, and commit still work.
-24. Verified CSV preserves leading-zero identifiers.
-25. Committed migrations require explicit rollback before deletion.
-26. Frontend type checking, linting, and build complete successfully.
-27. Backend core, database/API, and routing suites are green.
-28. `git diff --check` is clean.
-29. GitHub CI is green.
+8. `NEBIUS_BASE_URL`, `NEBIUS_MODEL_ID`, and `NEBIUS_ESCALATION_MODEL_ID` match the intended production values.
+9. The known production automatic-routing check remains documented: a real migration produced two deterministic concerns, triggered Ultra, and recorded `model_routing_decided` with `escalated: true`.
+10. `003_evidence_events.sql` and `004_robotics_destination.sql` are applied to the production database.
+11. `tavily-api-key` exists in Secret Manager and a real External Evidence Check still returns advisory sources without exposing the credential.
+12. The running Cloud Run revision points at the intended immutable backend image digest.
+13. `GET /api/schema/profiles` exposes only the expected allowlisted profiles and reports `customers_v1` as the backward-compatible default.
+14. A customer migration still stages, verifies, exports, commits, produces evidence, and rolls back as before.
+15. `robot_calibration_clean.csv` completes the robotics path and remains on Super when the proposal carries fewer than two concerns.
+16. `robot_calibration_ambiguous.csv` surfaces date and decimal ambiguity, triggers Ultra when the two-concern rule is met, and cannot be approved until the human decisions are supplied.
+17. `robot_calibration_multi_joint.csv` verifies composite identity `(robot_id, joint_name)` without treating repeated robot IDs as duplicates.
+18. Leading-zero robot IDs such as `0017` remain strings, and firmware text such as `3.08` is not numerically coerced.
+19. Robotics evidence names `robot_calibration_v1`, includes routing and approval context, and states that migration verification is not hardware-safety certification.
+20. Robotics verified CSV is generated only from stored verified data.
+21. Robotics commit remains fail-closed on mandatory verification failures or destination conflicts.
+22. Robotics rollback removes only rows written by that migration.
+23. Running External Evidence Check does not alter verification state or commit eligibility for either destination profile.
+24. Frontend type checking, linting, and production build complete successfully.
+25. Backend non-database and database/API suites are green.
+26. Rust verifier tests are green.
+27. `git diff --check` is clean.
+28. GitHub CI is green.
 
-The core MoveProof production stack and Tavily External Evidence Check are already verified.
+The core customer workflow, Tavily External Evidence Check, and automatic Super → Ultra reasoning escalation are already production-verified.
 
-The adaptive reasoning escalation feature should only be described as **production-verified end to end** after items 11 through 15 have been exercised against the deployed revision.
+`robot_calibration_v1` should only be described as **production-verified end to end** after item 10 and items 12 through 22 have been exercised against the deployed robotics-capable revision.
