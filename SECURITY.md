@@ -22,7 +22,7 @@ MoveProof is a full-stack data migration application composed of:
 - Nebius Token Factory for NVIDIA model inference;
 - an optional Tavily integration for External Evidence Check.
 
-The current production MoveProof core uses the frontend, backend, PostgreSQL, Rust verifier, and Nebius Token Factory. The `robot_calibration_v1` destination profile is implemented and verified locally and in CI, but it is not production-verified until migration `004_robotics_destination.sql`, the robotics-capable backend revision, and deployed end-to-end robotics checks are complete.
+The current production MoveProof core uses the frontend, backend, PostgreSQL, Rust verifier, and Nebius Token Factory. The `robot_calibration_v1` database migration and destination-profile infrastructure are deployed, and the active backend exposes the allowlisted robotics contract. The robotics workflow is not yet described as production-verified end to end until the deployed clean, ambiguous, and multi-joint checks pass on the current revision.
 
 External Evidence Check is part of the active production path only after its database migration, backend configuration, Secret Manager credential, and deployed Tavily runtime call have been verified. The current production deployment has completed those checks.
 
@@ -130,6 +130,8 @@ The model receives only the information needed for its reasoning task, including
 - a limited sample of source rows.
 
 The current default sample limit is controlled by `MODEL_SAMPLE_ROWS` and is set to five rows in the production configuration.
+
+This model boundary does not prevent deterministic backend code from inspecting the complete persisted source locally. Full-source checks do not enlarge the model prompt. For example, a model-assisted `PARSE_DATE` mapping receives an automatic ISO policy only when every non-empty value in the relevant stored source column is a canonical `YYYY-MM-DD` calendar date. Any other representation leaves the date policy undecided for human review.
 
 Field values are not intentionally written into model audit logs.
 

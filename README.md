@@ -238,7 +238,7 @@ Four separate claims, kept separate because they are established by different me
 | --- | --- | --- |
 | Routing implementation | **Verified** | `pytest tests/test_model_routing.py -v`, 31 passed |
 | Routing safety boundary | **Verified** | The same suite asserts escalation cannot reach validation, approval, verification or the commit gate |
-| Robotics-capable backend suite | **Verified locally** | 237 passed, 1 skipped outside the database suite; 129 database/API tests passed against PostgreSQL, including the robotics lifecycle |
+| Robotics-capable backend suite | **Verified locally** | Full non-database suite passes locally, including the date-policy regression tests; the database/API suite passes against PostgreSQL, including the robotics lifecycle |
 | Routing-capable backend deployed | **Verified** | Running on Cloud Run |
 | Super configured in production | **Verified** | `NEBIUS_MODEL_ID` set on the deployed revision |
 | Ultra configured in production | **Verified** | `NEBIUS_ESCALATION_MODEL_ID` set on the deployed revision |
@@ -246,7 +246,7 @@ Four separate claims, kept separate because they are established by different me
 | Direct Nemotron Ultra runtime access | **Verified** | A real Nebius Token Factory request succeeded against `nvidia/Nemotron-3-Ultra-550b-a55b`, in a separate run |
 | Tavily External Evidence Check | **Verified in production** | A real deployed request returned advisory sources |
 | Deployed end-to-end automatic escalation | **Verified in production** | A real production migration triggered Super → deterministic validation → Ultra, with `model_routing_decided` recording `escalated: true` |
-| Robotics destination profile | **Verified locally; production verification pending** | `robot_calibration_v1`, composite row identity, explicit human date/decimal resolution, profile-aware verification, evidence, export and rollback paths are implemented and verified locally against PostgreSQL/API lifecycle tests; deployed end-to-end verification is still pending. |
+| Robotics destination profile | **Production infrastructure deployed; end-to-end verification pending** | `004_robotics_destination.sql` is applied, the robotics-capable backend is active, and `/api/schema/profiles` exposes `robot_calibration_v1`; deployed clean, ambiguous, and composite-identity workflows still need to pass on the current revision before production verification is claimed. |
 
 Production end-to-end routing is verified. A real migration first called `nvidia/nemotron-3-super-120b-a12b`; deterministic validation then identified two concerns — an explicit acknowledgement for `signup_date` and a decimal-format advisory for `balance` — and automatically escalated the same bounded sample to `nvidia/Nemotron-3-Ultra-550b-a55b`. The structured `model_routing_decided` event recorded `escalated: true` and Ultra as the selected model.
 
@@ -263,7 +263,7 @@ MoveProof distinguishes between implemented, tested, deployed, and end-to-end ve
 | Approval gates and negative cases | Yes | **Verified** | `make test-core` |
 | Deterministic executor | Yes | **Verified** | `make test-core` |
 | Verification engine | Yes | **Verified** | `make test-core` |
-| Destination profiles and robotics calibration workflow | Yes | **Verified locally; production verification pending** | Robotics-focused tests and the full PostgreSQL/API lifecycle pass locally; run the deployed end-to-end robotics workflow before claiming production verification |
+| Destination profiles and robotics calibration workflow | Yes | **Verified locally; production infrastructure deployed; end-to-end verification pending** | Local robotics and PostgreSQL/API suites pass; deployed clean, ambiguous, and multi-joint workflows must still pass before claiming robotics production verification |
 | Canonical hashing, Python side | Yes | **Verified** | `make test-core` |
 | Python and Rust hashing parity | Yes | **Verified** | `make rust` then `make test-core` |
 | Synthetic generator and manifest | Yes | **Verified** | `make test-core` |
@@ -289,13 +289,13 @@ Current verification commands:
 - `npm run build`
 - `make rust-test`
 
-Current local robotics-capable verification: **237 passed, 1 skipped** outside the database suite, **129 passed** in the database/API suite against PostgreSQL, including **5 robotics database lifecycle tests**. The focused robotics/core selection passed **139 tests**. The Rust verifier passed **11 unit tests and 5 integration tests**. Frontend type checking and the production build passed; lint completed with only the two pre-existing `CommandPalette.tsx` hook warnings.
+Current local robotics-capable verification passes the full non-database backend suite, the complete database/API suite against PostgreSQL, the focused robotics workflow, and the new full-source date-policy regression tests. The Rust verifier, frontend type checking, linting, and production build were also verified during the robotics implementation pass.
 
 ### Production
 
 The core stack is deployed and the existing customer migration workflow has been exercised end to end against it.
 
-**Scope of the production claim:** the customer workflow, automatic Super → Ultra routing, and Tavily integration below are already production verified. The new `robot_calibration_v1` destination is implemented in this repository but has not yet been deployed and exercised end to end in production.
+**Scope of the production claim:** the customer workflow, automatic Super → Ultra routing, Tavily integration, robotics database migration, robotics destination registry, and robotics-capable backend infrastructure are deployed. The `robot_calibration_v1` workflow itself is not yet claimed as production-verified end to end; the current revision must complete the clean, ambiguous, and multi-joint deployed checks first.
 
 | Layer | Where it runs |
 | --- | --- |
@@ -848,6 +848,7 @@ Moveproof/
 │   │   ├── test_external_evidence.py       Tavily boundary, safety and non-mutation tests
 │   │   ├── test_destination_profiles.py    Destination registry and backward compatibility
 │   │   ├── test_robotics_verification.py  Composite identity and independent robotics verification
+│   │   ├── test_date_policy_inference.py Full-source ISO inference and out-of-sample ambiguity regression tests
 │   │   ├── test_robotics_workflow.py      Robotics workflow and database lifecycle cases
 │   │   └── fixtures/
 │   │       ├── clean.csv                   The nine hand written hazard fixtures
@@ -1085,7 +1086,7 @@ Approval binds to a stored server-generated proposal by version and hash, so
 the plan that executes is the exact plan the reviewer saw, including one
 drafted by Nemotron Super or Ultra. The browser never sends mappings back.
 
-Status: **implemented and verified locally against the real PostgreSQL/API lifecycle.** Focused robotics regression tests, the full database/API suite, frontend type checking/build, and the Rust verifier pass locally. Deployed end-to-end robotics verification remains pending.
+Status: **implemented and verified locally against the real PostgreSQL/API lifecycle, with production infrastructure deployed.** Migration `004_robotics_destination.sql` is applied and the deployed backend exposes `robot_calibration_v1`. Deployed end-to-end robotics workflow verification remains pending on the current revision.
 
 ---
 
@@ -1102,6 +1103,7 @@ Four constraints apply to both models.
 - Model output is untrusted input, validated against the operation allowlist before it reaches a human or the executor. An operation name a model invents is discarded during parsing and would be rejected by validation anyway.
 - Neither model ever emits SQL, shell commands or executable code.
 - Full datasets are never sent. `pipeline._sample_for_model` slices the rows to `MODEL_SAMPLE_ROWS` and is the only path from stored rows to a prompt, so the claim is enforced in one place rather than asserted in the interface.
+- Deterministic backend checks may inspect the complete persisted source locally without widening model context. For date parsing, an ISO policy is inferred automatically only when every non-empty value for each `PARSE_DATE` source column is a canonical `YYYY-MM-DD` date across the full stored source; otherwise the policy remains unset for human review.
 - Model name, request id and token usage are logged. Field values are not.
 
 Two deterministic proposal profiles work with no credential at all, so the product is usable and testable before Nebius is wired up. The model profile is disabled in the interface when `/health` reports no credential, rather than failing when clicked.
@@ -1306,7 +1308,8 @@ It navigates and it changes the theme. It cannot approve a plan, run a verificat
 - [x] Migration `003_evidence_events.sql` applied, Tavily secret configured, updated backend deployed, and a real production Tavily runtime call confirmed
 - [x] Direct Nebius Token Factory runtime access confirmed for both `nvidia/nemotron-3-super-120b-a12b` and `nvidia/Nemotron-3-Ultra-550b-a55b`
 - [x] Production automatic escalation confirmed: `model_routing_decided` recorded `escalated: true` and selected `nvidia/Nemotron-3-Ultra-550b-a55b`
-- [ ] Apply `004_robotics_destination.sql`, deploy the robotics-capable backend/frontend, and exercise clean plus ambiguous robotics migrations end to end before marking robotics production verified
+- [x] Apply `004_robotics_destination.sql`, deploy the robotics-capable backend/frontend, and confirm `/api/schema/profiles` exposes the allowlisted robotics profile
+- [ ] Exercise clean, ambiguous, and multi-joint robotics migrations end to end on the current deployed revision before marking robotics production verified
 
 ### Considered and deliberately deferred
 

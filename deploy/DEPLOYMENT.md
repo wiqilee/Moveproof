@@ -60,7 +60,7 @@ A real Nebius Token Factory inference call has been verified with the production
 
 Adaptive Super-to-Ultra routing is production-verified. A real model-assisted migration produced two deterministic validator concerns, triggered the Ultra pass, and recorded `model_routing_decided` with `escalated: true`.
 
-The new `robot_calibration_v1` destination profile is implemented, locally verified against PostgreSQL/API lifecycle tests, and present in the frontend build. It is **not** production-verified until migration `004_robotics_destination.sql` is applied to Cloud SQL, a robotics-capable Cloud Run revision is active, and clean plus ambiguous robotics migrations are exercised end to end.
+The `robot_calibration_v1` destination infrastructure is now deployed: `004_robotics_destination.sql` is applied, the robotics-capable Cloud Run backend is active, and `/api/schema/profiles` exposes the allowlisted robotics profile. The robotics workflow itself remains **end-to-end production verification pending** until the clean, ambiguous, and multi-joint checks pass on the current deployed revision.
 
 ### External Evidence Check status
 
@@ -799,10 +799,10 @@ Adaptive Super-to-Ultra routing has been verified end to end in production. Robo
 
 ### Robotics production verification
 
-After `004_robotics_destination.sql` and the robotics-capable backend are deployed:
+On the deployed robotics-capable revision:
 
 1. `GET /api/schema/profiles` must expose `customers_v1` and `robot_calibration_v1`, with `customers_v1` remaining the default for backward compatibility.
-2. Run `robot_calibration_clean.csv` through `robot_calibration_v1`. The clean model-assisted path should stay on Super, then stage, verify, export, commit, produce evidence, and roll back normally.
+2. Run `robot_calibration_clean.csv` through `robot_calibration_v1`. The full persisted source must deterministically prove canonical ISO dates, so the plan should carry `date_format_policy=iso`, no Day first / Month first decision should appear, the model-assisted path should stay on Super, and the migration should then stage, verify, export, commit, produce evidence, and roll back normally.
 3. Run `robot_calibration_ambiguous.csv`. Its ambiguous date plus mixed decimal convention should surface two deterministic concerns, exercise Super → Ultra when escalation is configured, and keep approval blocked until the reviewer explicitly resolves date and decimal policy.
 4. Run `robot_calibration_multi_joint.csv` and confirm repeated `robot_id` values with different joints are accepted under composite identity `(robot_id, joint_name)`.
 5. Confirm evidence names the destination profile and preserves the limitation that data verification is not hardware-safety certification.
@@ -820,7 +820,7 @@ source .venv/bin/activate
 make migrate
 pytest -m "not database" -v
 DATABASE_URL="postgresql://moveproof:moveproof_local_only@localhost:5433/moveproof"   pytest -m database -v
-pytest tests/test_model_routing.py tests/test_robotics_workflow.py   tests/test_robotics_verification.py tests/test_destination_profiles.py -v -m "not database"
+pytest tests/test_model_routing.py tests/test_date_policy_inference.py tests/test_robotics_workflow.py tests/test_robotics_verification.py tests/test_destination_profiles.py -v -m "not database"
 make rust-test
 ```
 

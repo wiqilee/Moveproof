@@ -454,10 +454,57 @@ def _propose_via_model(
         # customer column here would have made every robotics proposal
         # preserve the wrong field.
         key_column=destination.contract.key_column,
-        date_format_policy=None,
+        date_format_policy=_infer_source_date_policy(conn, migration_id, mappings),
     )
     return plan, sample
 
+
+def _infer_source_date_policy(
+    conn: psycopg.Connection,
+    migration_id: uuid.UUID,
+    mappings: list[Mapping],
+) -> DateFormatPolicy | None:
+    """Infer strict ISO only when the entire persisted source proves it.
+
+    The model still receives only the bounded planning sample. This decision is
+    made independently by deterministic backend code over the stored source
+    rows. Every non-empty value for every PARSE_DATE source must already be a
+    canonical YYYY-MM-DD calendar date. Anything else, including 03/04/2026,
+    remains undecided for a human reviewer.
+    """
+    from datetime import date
+
+    date_columns = [
+        mapping.source_column
+        for mapping in mappings
+        if mapping.operation is Operation.PARSE_DATE
+    ]
+    if not date_columns:
+        return None
+
+    rows = repository.load_source_rows(conn, migration_id)
+    saw_value = False
+
+    for column in date_columns:
+        for row in rows:
+            raw = row.values.get(column)
+            if raw is None:
+                continue
+
+            text = str(raw).strip()
+            if not text:
+                continue
+
+            saw_value = True
+            try:
+                parsed = date.fromisoformat(text)
+            except ValueError:
+                return None
+
+            if parsed.isoformat() != text:
+                return None
+
+    return DateFormatPolicy.ISO if saw_value else None
 
 def _validation_payload(
     validation: ValidationResult, contract: VerificationContract = CONTRACT
