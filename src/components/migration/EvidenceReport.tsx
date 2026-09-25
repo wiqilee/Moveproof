@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/Button";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { checkStatusPresentation } from "@/domain/status";
 import { serializeEvidence } from "@/data/api";
-import { API_BASE_URL } from "@/lib/api-client";
+import { API_BASE_URL, api } from "@/lib/api-client";
 import type { ApiEvidence } from "@/lib/api-types";
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
@@ -43,6 +43,8 @@ export function EvidenceReportView({
   pdfAvailable: boolean;
 }) {
   const [showJson, setShowJson] = useState(false);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvError, setCsvError] = useState<string | null>(null);
   const committed = evidence.commit !== null;
   const summary = evidence.verification.summary;
   const json = serializeEvidence(evidence);
@@ -55,6 +57,34 @@ export function EvidenceReportView({
     anchor.download = `${evidence.migration_id}-evidence.json`;
     anchor.click();
     URL.revokeObjectURL(url);
+  };
+
+  const downloadVerifiedCsv = async () => {
+    setCsvBusy(true);
+    setCsvError(null);
+
+    try {
+      const file = await api.exportVerifiedCsv(evidence.migration_id);
+      const url = URL.createObjectURL(file.blob);
+      const anchor = document.createElement("a");
+
+      anchor.href = url;
+      anchor.download = file.filename;
+      anchor.style.display = "none";
+
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setCsvError(
+        error instanceof Error
+          ? error.message
+          : "Could not download the verified CSV."
+      );
+    } finally {
+      setCsvBusy(false);
+    }
   };
 
   const query = `?run_id=${evidence.run_id}`;
@@ -201,6 +231,14 @@ export function EvidenceReportView({
 
       <div className="no-print flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2.5">
+          <Button
+            variant="secondary"
+            icon={Download}
+            onClick={() => void downloadVerifiedCsv()}
+            disabled={csvBusy}
+          >
+            {csvBusy ? "Downloading CSV" : "Download verified CSV"}
+          </Button>
           <Button variant="secondary" icon={Download} onClick={downloadJson}>
             Download JSON
           </Button>
@@ -246,6 +284,12 @@ export function EvidenceReportView({
           {committed ? "Committed" : commitAllowed ? "Commit migration" : "Commit blocked"}
         </Button>
       </div>
+
+      {csvError && (
+        <p className="mt-3 text-sm text-bad" role="alert">
+          {csvError}
+        </p>
+      )}
 
       {showJson && (
         <div className="mt-4 overflow-hidden rounded-card border border-line bg-surface">

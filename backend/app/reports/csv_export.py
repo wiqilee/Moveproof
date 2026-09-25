@@ -66,10 +66,11 @@ def build_csv(
 ) -> str:
     """Render the verified rows as CSV text.
 
-    Formula-like values are neutralised here and only here. The stored value
+    Formula-like string values are neutralised here and only here. Typed
+    numeric, date and boolean values are rendered directly. The stored value
     keeps whatever the source contained, so the verifier still compares against
-    the truth, while the exported file cannot execute `=SUM(A1:A9)` when a
-    spreadsheet opens it.
+    the truth, while untrusted text in the exported file cannot execute a
+    spreadsheet formula when opened.
     """
     columns = [column.name for column in schema.columns]
 
@@ -81,9 +82,21 @@ def build_csv(
     writer.writerow(columns)
 
     for row in rows:
-        writer.writerow(
-            [neutralise_for_export(render_value(row.get(column))) for column in columns]
-        )
+        rendered_row: list[str] = []
+        for column in columns:
+            value = row.get(column)
+            rendered = render_value(value)
+
+            # Spreadsheet-formula protection applies to untrusted text only.
+            # Typed Decimal/date/bool values cannot contain spreadsheet formulas,
+            # so their exact rendered representation must remain unchanged.
+            rendered_row.append(
+                neutralise_for_export(rendered)
+                if isinstance(value, str)
+                else rendered
+            )
+
+        writer.writerow(rendered_row)
 
     return buffer.getvalue()
 

@@ -198,6 +198,11 @@ def test_decimal_scale_is_preserved_exactly():
     assert parsed[1][4] == "1200.50"
 
 
+def test_a_negative_decimal_is_not_formula_escaped():
+    parsed = parse(build_csv([row(balance=Decimal("-2.250"))], CUSTOMERS_V1))
+    assert parsed[1][4] == "-2.250"
+
+
 def test_a_small_decimal_is_not_written_in_exponent_notation():
     parsed = parse(build_csv([row(balance=Decimal("0.0000001"))], CUSTOMERS_V1))
     assert "E" not in parsed[1][4] and "e" not in parsed[1][4]
@@ -231,6 +236,11 @@ def test_a_quote_in_a_value_round_trips():
 def test_a_newline_in_a_value_round_trips():
     parsed = parse(build_csv([row(full_name="Amara\nChen")], CUSTOMERS_V1))
     assert parsed[1][1] == "Amara\nChen"
+
+
+def test_negative_text_is_still_neutralised_on_the_way_out():
+    parsed = parse(build_csv([row(full_name="-not-a-number")], CUSTOMERS_V1))
+    assert parsed[1][1] == "'-not-a-number"
 
 
 def test_a_formula_like_value_is_neutralised_on_the_way_out():

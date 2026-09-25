@@ -45,7 +45,7 @@ export default function ReportPage() {
         <PageHeading
           eyebrow={migrationId.slice(0, 8)}
           title="Evidence report"
-          description="Assembled by the backend from execution and verification records. The JSON export and the PDF render this same object."
+          description="Verified CSV contains the transformed data. JSON, HTML, and PDF render the canonical evidence object assembled from execution and verification records."
           back={{
             href: routes.verification(migrationId),
             label: "Back to verification results",
