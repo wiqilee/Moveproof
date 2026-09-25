@@ -16,6 +16,22 @@ export interface ApiDestinationColumn {
   description: string;
 }
 
+/**
+ * One destination MoveProof can migrate into.
+ *
+ * The backend registry is the authority. The browser never constructs a
+ * profile id of its own; it offers what /api/schema/profiles returned.
+ */
+export interface ApiDestinationProfile {
+  id: string;
+  display_name: string;
+  description: string;
+  destination_table: string;
+  schema_version: string;
+  column_count: number;
+  required_count: number;
+}
+
 export interface ApiDestinationSchema {
   name: string;
   version: string;
@@ -31,6 +47,8 @@ export interface ApiDestinationSchema {
     exclusions: string[];
     hash: string;
   };
+  /** Absent on a response from an older backend, which means customers_v1. */
+  profile?: string;
 }
 
 export interface ApiUploadResult {
@@ -66,6 +84,8 @@ export interface ApiMigrationSummary {
   latest_run_id: string | null;
   verified_at: string | null;
   committed_at: string | null;
+  /** Null for a migration recorded before profiles existed: customers_v1. */
+  destination_profile?: string | null;
 }
 
 export interface ApiPlanMapping {
@@ -75,6 +95,18 @@ export interface ApiPlanMapping {
   status: "proposed" | "review" | "approved";
   note: string | null;
   requires_acknowledgement: boolean;
+}
+
+/**
+ * The identity of a server-generated proposal.
+ *
+ * Approval names this rather than sending a plan back, so what executes is
+ * the exact plan the server produced and the reviewer saw.
+ */
+export interface ApiProposalIdentity {
+  version: number;
+  hash: string;
+  source: string;
 }
 
 export interface ApiPlanProposal {
@@ -92,6 +124,15 @@ export interface ApiPlanProposal {
   requires_acknowledgement: boolean;
   acknowledgement_columns: string[];
   contract_hash: string;
+  /** Present from a backend that stores proposals. Approval binds to it. */
+  proposal?: ApiProposalIdentity;
+  /** Present only when the model source was used. */
+  routing?: {
+    default_model: string;
+    selected_model: string;
+    escalated: boolean;
+    reasons: string[];
+  };
 }
 
 export interface ApiApprovalResult {

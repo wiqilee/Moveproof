@@ -49,6 +49,7 @@ from app.evidence.service import (
     history as evidence_history,
     is_available as evidence_available,
 )
+from app.domain.profiles import UnknownDestinationProfile, resolve as resolve_profile
 from app.ingest.parser import ParseError
 from app.services import pipeline
 from app.services.pipeline import PipelineError
@@ -217,9 +218,29 @@ def health() -> dict[str, Any]:
     }
 
 
+@app.get("/api/schema/profiles")
+def list_destination_profiles() -> dict[str, Any]:
+    """Every destination a migration may target.
+
+    New endpoint rather than a change to the existing one, so a client that
+    only knows about the customer schema keeps working untouched.
+    """
+    return pipeline.destination_profiles()
+
+
 @app.get("/api/schema/destination")
-def get_destination_schema() -> dict[str, Any]:
-    return pipeline.destination_schema()
+def get_destination_schema(profile: str | None = None) -> dict[str, Any]:
+    """The schema for one destination.
+
+    `profile` is optional. Omitting it returns the customer schema, which is
+    what this endpoint has always returned, so existing callers are unaffected.
+    An unknown profile is a 422: it is a problem with the request rather than
+    with the state of any resource.
+    """
+    try:
+        return pipeline.destination_schema(profile)
+    except UnknownDestinationProfile as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------- migrations
@@ -227,14 +248,30 @@ def get_destination_schema() -> dict[str, Any]:
 
 @app.post("/api/migrations", status_code=201)
 async def create_migration(
-    file: UploadFile = File(...), conn=Depends(db)
+    file: UploadFile = File(...),
+    destination_profile: str | None = Query(
+        default=None,
+        description=(
+            "Destination to migrate into. Omitted means customers_v1, so an "
+            "existing client keeps its current behaviour."
+        ),
+    ),
+    conn=Depends(db),
 ) -> dict[str, Any]:
     raw = await file.read()
+    try:
+        resolve_profile(destination_profile)
+    except UnknownDestinationProfile as exc:
+        # Refused before the bytes are stored, so an unknown destination never
+        # produces a half-created migration.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     return pipeline.upload(
         conn,
         raw,
         file.filename or "upload.csv",
         content_type=file.content_type or "application/octet-stream",
+        destination_profile=destination_profile,
     )
 
 
@@ -251,6 +288,10 @@ def list_migrations(
                 "checksum": row["checksum"],
                 "row_count": row["row_count"],
                 "state": row["state"],
+                # Null for migrations recorded before profiles existed. The
+                # backend reads that absence as customers_v1; the field is
+                # additive so an older client simply ignores it.
+                "destination_profile": row.get("destination_profile"),
                 "created_at": row["created_at"].isoformat(),
                 "updated_at": row["updated_at"].isoformat(),
                 "latest_plan_version": row["latest_plan_version"],
@@ -295,6 +336,7 @@ def get_migration(migration_id: str, conn=Depends(db)) -> dict[str, Any]:
         "row_count": migration["row_count"],
         "columns": migration["source_columns"],
         "state": migration["state"],
+        "destination_profile": migration.get("destination_profile"),
         "created_at": migration["created_at"].isoformat(),
         "plans": [
             {
@@ -378,24 +420,48 @@ def delete_migration(migration_id: str, conn=Depends(db)) -> Response:
 @app.post("/api/migrations/{migration_id}/plan/propose")
 def propose(
     migration_id: str,
-    profile: str = Query(default="safe", pattern="^(safe|legacy|model)$"),
+    source: str = Query(
+        default="safe",
+        pattern="^(safe|legacy|model)$",
+        alias="profile",
+        description="Where the proposal comes from, not where it is going.",
+    ),
     conn=Depends(db),
 ) -> dict[str, Any]:
-    return pipeline.propose_plan(conn, _uuid(migration_id, "migration_id"), profile)
+    return pipeline.propose_plan(conn, _uuid(migration_id, "migration_id"), source)
 
 
 @app.post("/api/migrations/{migration_id}/plan/approve")
 def approve(
     migration_id: str, body: dict[str, Any], conn=Depends(db)
 ) -> dict[str, Any]:
+    """Approve a proposal.
+
+    `proposal_version` and `proposal_hash` come straight from the propose
+    response and bind this approval to the exact plan the reviewer saw. They
+    are required for a model-drafted proposal, because there is no way to
+    reconstruct one; the deterministic baselines may still be approved by
+    naming `source` alone.
+
+    Everything else in the body is a human decision, not a plan: which lossy
+    operations were acknowledged, how an ambiguous date is to be read, and how
+    an ambiguous decimal column is to be read. No mapping arrives from the
+    browser.
+    """
+    proposal_version = body.get("proposal_version")
     return pipeline.approve_plan(
         conn,
         _uuid(migration_id, "migration_id"),
-        profile=body.get("profile", "safe"),
+        source=body.get("source", body.get("profile", "safe")),
         acknowledgements=body.get("acknowledgements", []),
         date_format_policy=body.get("date_format_policy"),
         required_field_policy=body.get("required_field_policy"),
         conflict_policy=body.get("conflict_policy"),
+        proposal_version=int(proposal_version)
+        if proposal_version is not None
+        else None,
+        proposal_hash=body.get("proposal_hash"),
+        decimal_conventions=body.get("decimal_conventions"),
     )
 
 

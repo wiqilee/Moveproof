@@ -50,6 +50,7 @@ NVIDIA Nemotron 3 Super on Nebius Token Factory drafts every model-assisted prop
 - [Project structure](#project-structure)
 - [The API](#the-api)
 - [Environment variables](#environment-variables)
+- [Destination profiles](#destination-profiles)
 - [Nebius and NVIDIA](#nebius-and-nvidia)
 - [The Rust verifier](#the-rust-verifier)
 - [Reports](#reports)
@@ -77,6 +78,8 @@ An integer cast stripped the leading zero. Nothing was technically invalid: the 
 
 This is the class of failure MoveProof is designed to expose: transformations that succeed technically while violating the intended data contract.
 
+The same failure mode appears in robotics calibration data. A migration can preserve every row while silently changing a robot ID such as `0017` to `17`, coercing firmware `3.08` away from its intended string representation, or interpreting dates and decimal conventions differently. The pipeline can still report success while the data contract has changed.
+
 | What changes silently | Why it can go unnoticed |
 | --- | --- |
 | `00127` becomes `127` | The integer is valid and the row count still matches |
@@ -99,7 +102,7 @@ MoveProof separates those questions: **what was approved, what actually happened
 
 ## What MoveProof does
 
-Spreadsheet data goes into a structured database. In the model-assisted profile, an NVIDIA Nemotron model proposes a typed transformation plan; deterministic proposal profiles are also available and need no credential at all. Validated deterministic code executes the approved plan, and an independent verifier checks the staged result.
+Spreadsheet data goes into a structured database under an explicit destination contract. MoveProof currently demonstrates the same verification architecture across two profiles: customer-data migration with `customers_v1`, and per-joint robotics calibration migration with `robot_calibration_v1`. In the model-assisted path, NVIDIA Nemotron proposes a typed transformation plan; deterministic proposal profiles are also available and need no credential at all. Validated deterministic code executes the approved plan, and an independent verifier checks the staged result.
 
 MoveProof is not a generic ETL tool, and it is not an agent permitted to mutate production data on its own judgement. It is a verification layer for migrations where silent semantic damage matters.
 
@@ -235,7 +238,7 @@ Four separate claims, kept separate because they are established by different me
 | --- | --- | --- |
 | Routing implementation | **Verified** | `pytest tests/test_model_routing.py -v`, 31 passed |
 | Routing safety boundary | **Verified** | The same suite asserts escalation cannot reach validation, approval, verification or the commit gate |
-| Broader backend suite, non-database | **Verified** | 166 passed, 1 skipped |
+| Robotics-capable backend suite | **Verified locally** | 237 passed, 1 skipped outside the database suite; 129 database/API tests passed against PostgreSQL, including the robotics lifecycle |
 | Routing-capable backend deployed | **Verified** | Running on Cloud Run |
 | Super configured in production | **Verified** | `NEBIUS_MODEL_ID` set on the deployed revision |
 | Ultra configured in production | **Verified** | `NEBIUS_ESCALATION_MODEL_ID` set on the deployed revision |
@@ -243,6 +246,7 @@ Four separate claims, kept separate because they are established by different me
 | Direct Nemotron Ultra runtime access | **Verified** | A real Nebius Token Factory request succeeded against `nvidia/Nemotron-3-Ultra-550b-a55b`, in a separate run |
 | Tavily External Evidence Check | **Verified in production** | A real deployed request returned advisory sources |
 | Deployed end-to-end automatic escalation | **Verified in production** | A real production migration triggered Super → deterministic validation → Ultra, with `model_routing_decided` recording `escalated: true` |
+| Robotics destination profile | **Verified locally; production verification pending** | `robot_calibration_v1`, composite row identity, explicit human date/decimal resolution, profile-aware verification, evidence, export and rollback paths are implemented and verified locally against PostgreSQL/API lifecycle tests; deployed end-to-end verification is still pending. |
 
 Production end-to-end routing is verified. A real migration first called `nvidia/nemotron-3-super-120b-a12b`; deterministic validation then identified two concerns — an explicit acknowledgement for `signup_date` and a decimal-format advisory for `balance` — and automatically escalated the same bounded sample to `nvidia/Nemotron-3-Ultra-550b-a55b`. The structured `model_routing_decided` event recorded `escalated: true` and Ultra as the selected model.
 
@@ -259,6 +263,7 @@ MoveProof distinguishes between implemented, tested, deployed, and end-to-end ve
 | Approval gates and negative cases | Yes | **Verified** | `make test-core` |
 | Deterministic executor | Yes | **Verified** | `make test-core` |
 | Verification engine | Yes | **Verified** | `make test-core` |
+| Destination profiles and robotics calibration workflow | Yes | **Verified locally; production verification pending** | Robotics-focused tests and the full PostgreSQL/API lifecycle pass locally; run the deployed end-to-end robotics workflow before claiming production verification |
 | Canonical hashing, Python side | Yes | **Verified** | `make test-core` |
 | Python and Rust hashing parity | Yes | **Verified** | `make rust` then `make test-core` |
 | Synthetic generator and manifest | Yes | **Verified** | `make test-core` |
@@ -284,11 +289,13 @@ Current verification commands:
 - `npm run build`
 - `make rust-test`
 
-Latest backend run outside the database suite: **166 passed, 1 skipped**, including **31 routing tests**. Latest database and API suite: **124 passed**. The single skip is the branch that only runs when the Rust binary is absent; it skips because the binary is present.
+Current local robotics-capable verification: **237 passed, 1 skipped** outside the database suite, **129 passed** in the database/API suite against PostgreSQL, including **5 robotics database lifecycle tests**. The focused robotics/core selection passed **139 tests**. The Rust verifier passed **11 unit tests and 5 integration tests**. Frontend type checking and the production build passed; lint completed with only the two pre-existing `CommandPalette.tsx` hook warnings.
 
 ### Production
 
-The core stack is deployed and the full browser workflow has been exercised end to end against it.
+The core stack is deployed and the existing customer migration workflow has been exercised end to end against it.
+
+**Scope of the production claim:** the customer workflow, automatic Super → Ultra routing, and Tavily integration below are already production verified. The new `robot_calibration_v1` destination is implemented in this repository but has not yet been deployed and exercised end to end in production.
 
 | Layer | Where it runs |
 | --- | --- |
@@ -461,6 +468,9 @@ pytest tests/test_model_routing.py -v    # selective reasoning escalation
 | `test_database.py` | Staging, idempotency, conflicts, the commit gate, rollback | PostgreSQL |
 | `test_api.py` | API workflow, status taxonomy, and integration boundaries | PostgreSQL |
 | `test_external_evidence.py` | Metadata-only query construction, provider handling, audit safety, and non-mutation guarantees | Nothing; provider calls are mocked |
+| `test_destination_profiles.py` | Destination profile registry, backward compatibility, schema and contract selection | Nothing |
+| `test_robotics_verification.py` | Composite robotics identity, approved date policies, mixed-decimal verification and tamper detection | Nothing |
+| `test_robotics_workflow.py` | Robotics planning/execution workflow plus database lifecycle cases | PostgreSQL for database-marked cases |
 
 A test that needs something unavailable skips with a reason rather than passing quietly. No test spends Nebius or Tavily credits: both providers are mocked.
 
@@ -665,11 +675,11 @@ erDiagram
     MIGRATIONS ||--o{ RUNS : "executions"
     MIGRATIONS ||--o{ APPROVALS : "audit"
     MIGRATIONS ||--o{ EVENTS : "audit"
-    RUNS ||--o{ STAGING_CUSTOMERS : "staged rows"
+    RUNS ||--o{ PROFILE_STAGING : "profile-specific staged rows"
     RUNS ||--o{ CHECKS : "verification results"
     RUNS ||--o{ TRANSFORM_ERRORS : "rejections"
     RUNS ||--o| COMMITS : "at most one"
-    COMMITS ||--o{ CUSTOMERS : "written rows"
+    COMMITS ||--o{ PROFILE_DESTINATION : "written rows"
 
     SOURCE_FILES {
         bytea content "the authoritative source"
@@ -788,8 +798,9 @@ Moveproof/
 │   │   │   ├── types.py                    Typed vocabulary, Decimal for money
 │   │   │   ├── contract.py                 Mandatory checks and contract hashing
 │   │   │   ├── plan.py                     Allowlist validation, hardened approval
-│   │   │   ├── plans.py                    Safe and legacy proposal profiles
-│   │   │   ├── schema.py                   The destination schema
+│   │   │   ├── plans.py                    Destination-aware deterministic proposal profiles
+│   │   │   ├── schema.py                   Customer and robotics destination schemas
+│   │   │   ├── profiles.py                 Allowlisted destination registry and physical tables
 │   │   │   ├── sample_advisories.py        Deterministic advisories from the bounded sample
 │   │   │   └── verification.py             The independent verifier
 │   │   ├── ingest/
@@ -818,7 +829,8 @@ Moveproof/
 │   ├── sql/
 │   │   ├── 001_schema.sql                  Control plane, staging, destination
 │   │   ├── 002_batch3_integrity.sql        Source bytes, evidence, commit ledger
-│   │   └── 003_evidence_events.sql         Structured audit metadata on events
+│   │   ├── 003_evidence_events.sql         Structured audit metadata on events
+│   │   └── 004_robotics_destination.sql    Robotics profile, staging and destination table
 │   ├── scripts/
 │   │   ├── generate_fixtures.py            Deterministic synthetic datasets
 │   │   ├── nebius_smoke_test.py            Standalone credential and catalogue check
@@ -834,6 +846,9 @@ Moveproof/
 │   │   ├── test_database.py                Staging, idempotency, commit, rollback
 │   │   ├── test_api.py                     API workflow and status taxonomy
 │   │   ├── test_external_evidence.py       Tavily boundary, safety and non-mutation tests
+│   │   ├── test_destination_profiles.py    Destination registry and backward compatibility
+│   │   ├── test_robotics_verification.py  Composite identity and independent robotics verification
+│   │   ├── test_robotics_workflow.py      Robotics workflow and database lifecycle cases
 │   │   └── fixtures/
 │   │       ├── clean.csv                   The nine hand written hazard fixtures
 │   │       ├── ambiguous_date.csv
@@ -845,8 +860,11 @@ Moveproof/
 │   │       ├── missing_required.csv
 │   │       ├── numeric_overflow.csv
 │   │       ├── untrusted_cells.csv
-│   │       ├── routine_migration.csv       Routing demo: stays on Super
-│   │       ├── ambiguous_migration.csv     Routing demo: expected to escalate
+│   │       ├── routine_migration.csv       Customer routing demo: stays on Super
+│   │       ├── ambiguous_migration.csv     Customer routing demo: expected to escalate
+│   │       ├── robot_calibration_clean.csv Robotics routing demo: clean path
+│   │       ├── robot_calibration_ambiguous.csv Robotics routing demo: date + decimal concerns
+│   │       ├── robot_calibration_multi_joint.csv Composite identity: one robot, multiple joints
 │   │       └── sample_evidence.py          Canonical object for the report tests
 │   ├── Dockerfile                          Two stage, compiles and tests the Rust crate
 │   ├── docker-compose.yml                  Local PostgreSQL on port 5433
@@ -919,7 +937,8 @@ The public API exposes the migration workflow, evidence exports, and advisory Ex
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/health` | Database, Nebius, Rust, report generation, and External Evidence availability |
-| GET | `/api/schema/destination` | The destination schema and the contract hash |
+| GET | `/api/schema/profiles` | List the allowlisted destination profiles available to the upload flow |
+| GET | `/api/schema/destination` | Schema and contract hash for one profile; omitting `profile` remains backward-compatible and returns `customers_v1` |
 | POST | `/api/migrations` | Upload a CSV, TSV, XLSX or XLSM file |
 | GET | `/api/migrations` | Index with plan and run state folded in |
 | GET | `/api/migrations/search?q=` | Search by filename or id, used by the command palette |
@@ -1005,6 +1024,68 @@ Only `NEXT_PUBLIC_` values reach the browser, and none of them is a secret.
 `NEBIUS_ESCALATION_MODEL_ID` is optional and is not a credential: it names a model, and the existing `NEBIUS_API_KEY` authenticates it over the same endpoint. Removing it returns MoveProof to Super-only behaviour with no other change.
 
 Neither the Nebius key nor the Tavily key carries a `NEXT_PUBLIC_` prefix, and neither ever will. `NEXT_PUBLIC_TAVILY_API_KEY` in particular would put a billable credential in every visitor's browser. Put secrets in your shell or in Secret Manager, not in a file the frontend can read.
+
+---
+
+## Destination profiles
+
+MoveProof migrates into two destinations. Both run the same workflow: one
+validator, one routing rule, one executor, one fail-closed commit gate.
+
+| Profile | Destination table | What it holds |
+| --- | --- | --- |
+| `customers_v1` | `public.customers` | Customer identifiers, contact details, signup dates, balances |
+| `robot_calibration_v1` | `public.robot_calibrations` | Per-joint robot calibration: identity, zero offset, gear ratio, firmware version, sensor frame, calibration date |
+
+The profile is chosen before upload and recorded on the migration row, so every
+later stage resolves the same contract. `backend/app/domain/profiles.py` is the
+registry, and every table and column name that reaches SQL comes from it: a
+profile id arriving from a request is looked up there or refused, never turned
+into an identifier.
+
+A migration recorded before profiles existed stores no profile, and that
+absence resolves to `customers_v1`. Nothing was backfilled, because the absence
+is already the answer.
+For robotics, destination row identity is the composite key **`(robot_id, joint_name)`**: one robot may legitimately have multiple joint calibration rows. Separately, `robot_id` remains an identifier-preservation field, so a source value such as `0017` must still arrive as `0017`, not `17`.
+
+### What robotics verifies, and what it does not
+
+The robotics contract checks that recorded values survived the migration:
+`0017` is still `0017` rather than `17`, firmware `3.08` is still text rather
+than a number, decimals keep the destination's scale, and dates match the
+policy a human approved.
+
+It makes no claim about hardware. MoveProof does not command robots, evaluate
+whether a calibration is correct, or certify physical safety, and the evidence
+report says so in its own limitations section.
+
+### Robotics fixtures
+
+| Fixture | Shape | Expected routing |
+| --- | --- | --- |
+| `backend/tests/fixtures/robot_calibration_clean.csv` | ISO dates, one decimal convention | Stays on Super |
+| `backend/tests/fixtures/robot_calibration_ambiguous.csv` | Dates that read two ways, `gear_ratio` mixing decimal conventions | Two concerns, so it escalates to Ultra |
+| `backend/tests/fixtures/robot_calibration_multi_joint.csv` | One `robot_id` with multiple distinct joints | Proves composite row identity without treating repeated robot IDs as duplicates |
+
+The ambiguous fixture is worth understanding. Its mixed decimals raise a
+deterministic advisory during planning, and its dates read two ways. Neither is
+guessed. The mapping step asks the reviewer to decide:
+
+- **Date**: day first or month first. No default, and approval stays blocked
+  until one is chosen.
+- **Decimal**: read as dot decimal, comma decimal, or either-when-unambiguous.
+  A value that does not match the approved rule exactly is still refused.
+
+Both choices are recorded in the approved plan version and appear in the
+evidence report. With them made, the ambiguous file executes, verifies and
+commits like any other; without them it does not proceed. An ISO file with one
+decimal convention raises neither question and the step stays unobtrusive.
+
+Approval binds to a stored server-generated proposal by version and hash, so
+the plan that executes is the exact plan the reviewer saw, including one
+drafted by Nemotron Super or Ultra. The browser never sends mappings back.
+
+Status: **implemented and verified locally against the real PostgreSQL/API lifecycle.** Focused robotics regression tests, the full database/API suite, frontend type checking/build, and the Rust verifier pass locally. Deployed end-to-end robotics verification remains pending.
 
 ---
 
@@ -1218,12 +1299,14 @@ It navigates and it changes the theme. It cannot approve a plan, run a verificat
 - [x] Full production browser workflow exercised end to end
 - [x] External Evidence Check, metadata-only advisory context from Tavily inside plan review
 - [x] Selective Super to Ultra reasoning escalation on deterministic signals, tested and deployed
+- [x] Destination-profile architecture with `customers_v1` and `robot_calibration_v1`, including composite robotics identity and explicit human date/decimal resolution
 
 ### Production verification
 
 - [x] Migration `003_evidence_events.sql` applied, Tavily secret configured, updated backend deployed, and a real production Tavily runtime call confirmed
 - [x] Direct Nebius Token Factory runtime access confirmed for both `nvidia/nemotron-3-super-120b-a12b` and `nvidia/Nemotron-3-Ultra-550b-a55b`
 - [x] Production automatic escalation confirmed: `model_routing_decided` recorded `escalated: true` and selected `nvidia/Nemotron-3-Ultra-550b-a55b`
+- [ ] Apply `004_robotics_destination.sql`, deploy the robotics-capable backend/frontend, and exercise clean plus ambiguous robotics migrations end to end before marking robotics production verified
 
 ### Considered and deliberately deferred
 

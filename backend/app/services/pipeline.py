@@ -21,6 +21,12 @@ from app.config import settings
 from app.db import repository
 from app.db.repository import NotFound
 from app.domain.contract import CUSTOMERS_CONTRACT_V1, VerificationContract
+from app.domain.profiles import (
+    DEFAULT_PROFILE_ID,
+    DestinationProfile,
+    listing as profile_listing,
+    resolve as resolve_profile,
+)
 from app.domain.plan import ApprovalRefused, ValidationResult, approve, validate_plan
 from app.services.routing import RoutingDecision, evaluate as evaluate_routing
 from app.domain.sample_advisories import with_sample_advisories
@@ -29,7 +35,9 @@ from app.domain.schema import CUSTOMERS_V1
 from app.domain.types import (
     ConflictPolicy,
     DateFormatPolicy,
+    DuplicatePolicy,
     Mapping,
+    MappingStatus,
     MigrationPlan,
     MigrationState,
     Operation,
@@ -41,8 +49,21 @@ from app.reports.csv_export import build_csv, export_filename
 from app.services.evidence import build_evidence
 from app.verify.db_verifier import verify_run
 
+# The customer destination stays importable under its historical names so
+# nothing that already depends on them breaks. New code resolves the profile
+# from the migration instead: the destination is a property of the migration,
+# not of the module.
 CONTRACT: VerificationContract = CUSTOMERS_CONTRACT_V1
 SCHEMA = CUSTOMERS_V1
+
+
+def _profile(conn: psycopg.Connection, migration_id: uuid.UUID) -> DestinationProfile:
+    """The destination this migration targets.
+
+    A migration recorded before profiles existed resolves to the customer
+    profile, which is what it has always been.
+    """
+    return repository.profile_for_migration(conn, migration_id)
 
 
 class PipelineError(Exception):
@@ -62,6 +83,7 @@ def upload(
     filename: str,
     content_type: str = "text/csv",
     uploaded_by: str | None = None,
+    destination_profile: str | None = None,
 ) -> dict[str, Any]:
     if len(raw) > settings.max_upload_bytes:
         raise PipelineError(
@@ -82,6 +104,9 @@ def upload(
         original_bytes=raw,
         content_type=content_type,
         uploaded_by=uploaded_by or settings.operator,
+        # Resolved first so an unknown id is refused before anything is
+        # written, rather than stored and discovered at staging time.
+        destination_profile=resolve_profile(destination_profile).id,
     )
     return {
         "migration_id": str(migration_id),
@@ -112,10 +137,20 @@ def preview(
     }
 
 
-def destination_schema() -> dict[str, Any]:
+def destination_schema(profile_id: str | None = None) -> dict[str, Any]:
+    """The schema a client should show for a destination.
+
+    No profile means the customer destination, so an existing client that
+    calls this without a parameter sees exactly what it saw before.
+    """
+    profile = resolve_profile(profile_id)
+    schema = profile.schema
+    contract = profile.contract
     return {
-        "name": SCHEMA.name,
-        "version": SCHEMA.version,
+        "profile": profile.id,
+        "display_name": profile.display_name,
+        "name": schema.name,
+        "version": schema.version,
         "columns": [
             {
                 "name": column.name,
@@ -124,10 +159,15 @@ def destination_schema() -> dict[str, Any]:
                 "unique": column.unique,
                 "description": column.description,
             }
-            for column in SCHEMA.columns
+            for column in schema.columns
         ],
-        "contract": {**CONTRACT.as_dict(), "hash": CONTRACT.hash()},
+        "contract": {**contract.as_dict(), "hash": contract.hash()},
     }
+
+
+def destination_profiles() -> dict[str, Any]:
+    """Every destination a client may offer in the wizard."""
+    return {"profiles": profile_listing(), "default": DEFAULT_PROFILE_ID}
 
 
 # ------------------------------------------------------------------ planning
@@ -146,34 +186,47 @@ def _sample_for_model(conn: psycopg.Connection, migration_id: uuid.UUID) -> list
 def propose_plan(
     conn: psycopg.Connection,
     migration_id: uuid.UUID,
-    profile: str = "safe",
+    source: str = "safe",
 ) -> dict[str, Any]:
-    """Produce a mapping proposal and validate it.
+    """Produce a mapping proposal, validate it, and store it.
 
-    `profile` selects the proposal source. "safe" and "legacy" are deterministic
-    baselines that need no credential; "model" asks Nebius. The legacy profile
-    exists so the leading-zero demonstration runs from a real approved plan
-    rather than a hardcoded result.
+    Two different things were once both called "profile", which is how a
+    string ended up having `.schema` read from it. They are now named apart
+    and never share a variable:
+
+        `source`       where the proposal comes from: safe, legacy or model
+        `destination`  the DestinationProfile resolved from the migration,
+                       carrying the schema and contract to validate against
+
+    The validated proposal is persisted before it is returned. Approval later
+    names that stored version, so what a reviewer approves is the exact plan
+    the server generated rather than anything the browser sends back.
     """
     migration = repository.load_migration(conn, migration_id)
     columns = tuple(migration["source_columns"])
+    destination = repository.profile_for_migration(conn, migration_id)
 
     # Only the model profile has a model to route between. The deterministic
     # profiles carry no routing record because no model was consulted.
     routing: RoutingDecision | None = None
     sample: list[dict] | None = None
 
-    if profile == "model":
-        plan, routing, sample = _propose_with_routing(conn, migration_id, columns)
-    elif profile == "legacy":
-        plan = legacy_integer_cast_plan(date_policy=DateFormatPolicy.ISO)
+    if source == "model":
+        plan, routing, sample = _propose_with_routing(
+            conn, migration_id, columns, destination
+        )
+    elif source == "legacy":
+        plan = legacy_integer_cast_plan(
+            date_policy=DateFormatPolicy.ISO, profile_id=destination.id
+        )
     else:
         plan = safe_plan(
             date_policy=DateFormatPolicy.ISO,
             required_field_policy=RequiredFieldPolicy.QUARANTINE,
+            profile_id=destination.id,
         )
 
-    validation = validate_plan(plan, SCHEMA, columns)
+    validation = validate_plan(plan, destination.schema, columns)
     if sample is not None:
         # The reviewer sees the same deterministic advisories the router used.
         validation = with_sample_advisories(validation, sample)
@@ -182,11 +235,16 @@ def propose_plan(
         migration_id,
         None,
         "info",
-        f"Proposed plan v{plan.version} from the {profile} profile, "
+        f"Proposed plan v{plan.version} from the {source} source, "
         f"{len(validation.issues)} issue(s)",
     )
 
-    payload = _validation_payload(validation)
+    # Store the validated proposal and hand back its identity. Approval binds
+    # to this, so the plan a reviewer saw is the plan that can execute.
+    stored = repository.store_proposal(conn, migration_id, validation.plan, source)
+
+    payload = _validation_payload(validation, destination.contract)
+    payload["proposal"] = stored
     if routing is not None:
         # Surfaced to the interface so a reviewer can see which model drafted
         # what they are approving, and why.
@@ -195,7 +253,10 @@ def propose_plan(
 
 
 def _propose_with_routing(
-    conn: psycopg.Connection, migration_id: uuid.UUID, columns: tuple[str, ...]
+    conn: psycopg.Connection,
+    migration_id: uuid.UUID,
+    columns: tuple[str, ...],
+    destination: DestinationProfile,
 ) -> tuple[MigrationPlan, RoutingDecision, list[dict]]:
     """Propose on the default model, then escalate only when it is justified.
 
@@ -216,14 +277,14 @@ def _propose_with_routing(
     default_model = settings.nebius_model_id or "nebius:default"
     escalation_model = settings.nebius_escalation_model_id or None
 
-    first, sample = _propose_via_model(conn, migration_id, columns)
+    first, sample = _propose_via_model(conn, migration_id, columns, destination)
 
     # Routed on the validated first proposal, so the signals are facts the
     # validator computed rather than anything the model asserted about itself.
     # Sample advisories come from the same bounded rows the model already saw;
     # nothing here loads more data.
     first_validation = with_sample_advisories(
-        validate_plan(first, SCHEMA, columns), sample
+        validate_plan(first, destination.schema, columns), sample
     )
     decision = evaluate_routing(first_validation, default_model, escalation_model)
 
@@ -235,7 +296,12 @@ def _propose_with_routing(
         # The identical sample, passed through rather than re-read, so both
         # passes see exactly the same bounded context.
         deeper, _ = _propose_via_model(
-            conn, migration_id, columns, model_id=decision.selected_model, sample=sample
+            conn,
+            migration_id,
+            columns,
+            destination,
+            model_id=decision.selected_model,
+            sample=sample,
         )
     except PipelineError as exc:
         # Escalation is an optimisation, never a dependency.
@@ -284,6 +350,7 @@ def _propose_via_model(
     conn: psycopg.Connection,
     migration_id: uuid.UUID,
     columns: tuple[str, ...],
+    destination: DestinationProfile,
     model_id: str | None = None,
     sample: list[dict] | None = None,
 ) -> tuple[MigrationPlan, list[dict]]:
@@ -315,7 +382,7 @@ def _propose_via_model(
     schema_summary = "\n".join(
         f"  {c.name} {c.data_type}"
         f"{' NOT NULL' if c.required else ''}{' UNIQUE' if c.unique else ''}"
-        for c in SCHEMA.columns
+        for c in destination.schema.columns
     )
     allowed = ", ".join(op.value for op in Operation)
 
@@ -383,13 +450,18 @@ def _propose_via_model(
         version=1,
         mappings=tuple(mappings),
         proposed_by=f"nebius:{reply['model']}",
-        key_column="customer_id",
+        # The identifier comes from the destination contract. Hardcoding a
+        # customer column here would have made every robotics proposal
+        # preserve the wrong field.
+        key_column=destination.contract.key_column,
         date_format_policy=None,
     )
     return plan, sample
 
 
-def _validation_payload(validation: ValidationResult) -> dict[str, Any]:
+def _validation_payload(
+    validation: ValidationResult, contract: VerificationContract = CONTRACT
+) -> dict[str, Any]:
     plan = validation.plan
     return {
         "plan": {
@@ -424,35 +496,180 @@ def _validation_payload(validation: ValidationResult) -> dict[str, Any]:
         "acknowledgement_columns": [
             m.source_column for m in plan.mappings if m.requires_acknowledgement
         ],
-        "contract_hash": CONTRACT.hash(),
+        "contract_hash": contract.hash(),
     }
 
 
 # ------------------------------------------------------------------ approval
 
 
+DECIMAL_CONVENTIONS = {"dot_decimal", "comma_decimal", "strict_either"}
+
+
+
+def _stored_proposal(
+    conn: psycopg.Connection,
+    migration_id: uuid.UUID,
+    version: int,
+    expected_hash: str | None,
+) -> MigrationPlan:
+    """Load the proposal the reviewer approved, and prove it is that one.
+
+    A hash mismatch means the stored proposal changed after the browser
+    rendered it, usually because a newer proposal was generated in another
+    tab. Approving on stale information is exactly the failure this check
+    exists to prevent, so it refuses rather than proceeding.
+    """
+    record = repository.load_plan(conn, migration_id, version)
+    if record["approved_at"] is not None:
+        raise PipelineError(
+            f"Plan v{version} is already approved. Propose again to make changes."
+        )
+
+    body = record["body"]
+    plan = MigrationPlan(
+        version=record["version"],
+        mappings=tuple(
+            Mapping(
+                source_column=m["source_column"],
+                destination_column=m["destination_column"],
+                operation=Operation(m["operation"]),
+                status=MappingStatus(m.get("status", "proposed")),
+                note=m.get("note"),
+                requires_acknowledgement=m.get("requires_acknowledgement", False),
+                options=m.get("options", {}),
+            )
+            for m in body["mappings"]
+        ),
+        proposed_by=record["proposed_by"],
+        key_column=body["key_column"],
+        date_format_policy=DateFormatPolicy(body["date_format_policy"])
+        if body.get("date_format_policy")
+        else None,
+        duplicate_policy=DuplicatePolicy(body["duplicate_policy"])
+        if body.get("duplicate_policy")
+        else DuplicatePolicy.KEEP_FIRST_EXACT,
+        required_field_policy=RequiredFieldPolicy(body["required_field_policy"])
+        if body.get("required_field_policy")
+        else None,
+    )
+
+    if expected_hash is not None:
+        actual = repository.proposal_hash(plan)
+        if actual != expected_hash:
+            raise PipelineError(
+                "This proposal has changed since it was shown. Propose again and "
+                "review the current plan before approving it."
+            )
+    return plan
+
+
+def _apply_decimal_conventions(
+    mappings: tuple[Mapping, ...], conventions: dict[str, str] | None
+) -> tuple[Mapping, ...]:
+    """Record an explicitly approved reading for an ambiguous decimal column.
+
+    Nothing is guessed. A column only gains a convention because a human chose
+    one, the choice is stored in the approved plan's mapping options, and the
+    executor refuses any value that does not match the chosen pattern exactly.
+    """
+    if not conventions:
+        return mappings
+
+    unknown = set(conventions.values()) - DECIMAL_CONVENTIONS
+    if unknown:
+        raise PipelineError(
+            "Unknown decimal convention: " + ", ".join(sorted(unknown)) + ". "
+            "Choose one of: " + ", ".join(sorted(DECIMAL_CONVENTIONS)) + "."
+        )
+
+    updated = []
+    for mapping in mappings:
+        convention = conventions.get(mapping.source_column)
+        if convention is None or mapping.operation is not Operation.CAST_TO_DECIMAL:
+            updated.append(mapping)
+            continue
+        options = dict(mapping.options)
+        options["decimal_convention"] = convention
+        updated.append(
+            Mapping(
+                source_column=mapping.source_column,
+                destination_column=mapping.destination_column,
+                operation=mapping.operation,
+                status=mapping.status,
+                note=mapping.note,
+                requires_acknowledgement=mapping.requires_acknowledgement,
+                options=options,
+            )
+        )
+    return tuple(updated)
+
+
 def approve_plan(
     conn: psycopg.Connection,
     migration_id: uuid.UUID,
-    profile: str,
-    acknowledgements: list[str],
+    source: str | None = None,
+    acknowledgements: list[str] | None = None,
     date_format_policy: str | None = None,
     required_field_policy: str | None = None,
     conflict_policy: str | None = None,
     approved_by: str | None = None,
+    proposal_version: int | None = None,
+    proposal_hash: str | None = None,
+    decimal_conventions: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    """Approve the exact proposal a reviewer saw.
+
+    Two routes in, and the difference matters.
+
+    When `proposal_version` is given, the stored proposal at that version is
+    loaded from the database and `proposal_hash` must match it. That is the
+    only way a model-drafted plan can be approved: the browser names which
+    server-generated proposal it is approving and proves it has not gone
+    stale, and the server never reconstructs a plan of its own from a source
+    string. Nothing from the request body becomes part of the plan except the
+    human decisions listed below.
+
+    Without a proposal reference, the deterministic baselines are rebuilt from
+    `source`, which is exactly reproducible. The model source is refused on
+    that route, because there is nothing to reproduce.
+
+    The human decisions an approval may carry, and nothing else:
+
+        acknowledgements     lossy operations named by column
+        date_format_policy   how an ambiguous date is to be read
+        decimal_conventions  how an ambiguous decimal column is to be read
+        required_field_policy, conflict_policy
+
+    Every one of them is applied before revalidation, so the plan that gets
+    approved is the plan that was checked.
+    """
     migration = repository.load_migration(conn, migration_id)
     columns = tuple(migration["source_columns"])
+    destination = repository.profile_for_migration(conn, migration_id)
+    acknowledgements = list(acknowledgements or [])
 
-    base = (
-        legacy_integer_cast_plan()
-        if profile == "legacy"
-        else safe_plan()
-    )
-    next_version = (repository.latest_approved_plan_version(conn, migration_id) or 0) + 1
+    if proposal_version is not None:
+        base = _stored_proposal(conn, migration_id, proposal_version, proposal_hash)
+    elif source == "model":
+        raise PipelineError(
+            "A model proposal must be approved by naming the stored proposal. "
+            "Send proposal_version and proposal_hash from the proposal response "
+            "so the plan approved is the plan that was shown."
+        )
+    elif source == "legacy":
+        base = legacy_integer_cast_plan(profile_id=destination.id)
+    else:
+        base = safe_plan(profile_id=destination.id)
+
+    mappings = _apply_decimal_conventions(base.mappings, decimal_conventions)
+
+    next_version = repository.next_plan_version(conn, migration_id)
     plan = MigrationPlan(
         version=next_version,
-        mappings=base.mappings,
+        mappings=mappings,
+        # The truthful origin survives approval, including which model drafted
+        # it, so an evidence report can say who proposed what.
         proposed_by=base.proposed_by,
         key_column=base.key_column,
         date_format_policy=DateFormatPolicy(date_format_policy)
@@ -467,14 +684,14 @@ def approve_plan(
         else ConflictPolicy.FAIL_CLOSED,
     )
 
-    validation = validate_plan(plan, SCHEMA, columns)
+    validation = validate_plan(plan, destination.schema, columns)
     try:
         approved = approve(
             validation,
             approved_by or settings.operator,
             _now(),
             acknowledgements=acknowledgements,
-            contract=CONTRACT,
+            contract=destination.contract,
         )
     except ApprovalRefused as exc:
         raise PipelineError(str(exc)) from exc
@@ -495,6 +712,8 @@ def approve_plan(
     repository.set_state(conn, migration_id, MigrationState.PLAN_APPROVED)
     return {
         "migration_id": str(migration_id),
+        "destination_profile": destination.id,
+        "contract_hash": approved.contract_hash,
         "plan_version": approved.version,
         "contract_hash": approved.contract_hash,
         "acknowledgements": list(approved.acknowledgements),
@@ -621,10 +840,17 @@ def execute(
         )
 
     repository.set_state(conn, migration_id, MigrationState.STAGING)
-    result = execute_plan(plan, SCHEMA, parsed.rows, parsed.source_file.columns)
+    profile = _profile(conn, migration_id)
+    result = execute_plan(
+        plan,
+        profile.schema,
+        parsed.rows,
+        parsed.source_file.columns,
+        identity_columns=profile.key_columns,
+    )
 
     run_id = repository.persist_run(
-        conn, migration_id, plan, result, key, contract=CONTRACT
+        conn, migration_id, plan, result, key, contract=profile.contract
     )
     return {
         "migration_id": str(migration_id),
@@ -646,14 +872,35 @@ def execute(
 def verify(
     conn: psycopg.Connection, migration_id: uuid.UUID, run_id: uuid.UUID
 ) -> dict[str, Any]:
+    profile = _profile(conn, migration_id)
+
+    # The decisions a human approved, read back from the stored plan version
+    # this run executed. Nothing here comes from the request: verification is
+    # checking the approved contract, so it must read the approved contract.
+    run = repository.load_run(conn, run_id)
+    approved = repository.load_plan(conn, migration_id, run["plan_version"])
+    # The policy lives inside the plan body, not as a column of its own.
+    approved_body = approved.get("body") or {}
+    date_format_policy = approved_body.get("date_format_policy")
+    decimal_conventions = {
+        mapping["source_column"]: mapping["options"]["decimal_convention"]
+        for mapping in approved_body.get("mappings", [])
+        if isinstance(mapping.get("options"), dict)
+        and mapping["options"].get("decimal_convention")
+    }
+
     outcome = verify_run(
         conn,
         migration_id,
         run_id,
-        SCHEMA,
-        key_column=CONTRACT.key_column,
-        date_columns=CONTRACT.date_columns,
-        reconciliation_fields=CONTRACT.reconciliation_fields,
+        profile.schema,
+        key_column=profile.contract.key_column,
+        unverified_properties=profile.unverified_properties,
+        date_columns=profile.contract.date_columns,
+        reconciliation_fields=profile.contract.reconciliation_fields,
+        identity_columns=profile.key_columns,
+        date_format_policy=date_format_policy,
+        decimal_conventions=decimal_conventions,
     )
     repository.save_checks(conn, run_id, outcome.checks)
     repository.mark_verified(conn, run_id)
@@ -689,7 +936,7 @@ def verify(
                 "expected": c.expected,
                 "observed": c.observed,
                 "status": c.status.value,
-                "mandatory": CONTRACT.is_mandatory(c.check_id),
+                "mandatory": profile.contract.is_mandatory(c.check_id),
                 "evidence": [
                     {
                         "row_key": e.row_key,
@@ -796,7 +1043,7 @@ def commit(
         migration_id,
         run_id,
         approved_by or settings.operator,
-        CONTRACT,
+        _profile(conn, migration_id).contract,
         policy,
     )
     return {"migration_id": str(migration_id), "run_id": str(run_id), **outcome}
@@ -859,12 +1106,16 @@ def _run_is_verified(conn: psycopg.Connection, run_id: uuid.UUID) -> bool:
     if not stored:
         return False
 
+    # The contract of the migration this run belongs to. A robotics run is
+    # judged against the robotics contract, never the customer one.
+    contract = repository.profile_for_run(conn, run_id).contract
+
     executed = {check["check_id"] for check in stored}
-    if CONTRACT.missing_checks(executed):
+    if contract.missing_checks(executed):
         return False
 
     return not any(
-        CONTRACT.is_mandatory(check["check_id"])
+        contract.is_mandatory(check["check_id"])
         and check["status"] in ("failed", "review")
         for check in stored
     )
@@ -916,7 +1167,8 @@ def export_verified_csv(
         )
 
     rows = repository.load_staged_rows(conn, run_id, committable_only=True)
-    csv_text = build_csv((row["values"] for row in rows), SCHEMA)
+    profile = _profile(conn, migration_id)
+    csv_text = build_csv((row["values"] for row in rows), profile.schema)
 
     run = repository.load_run(conn, run_id)
     commit_record = repository.load_commit(conn, run_id)
@@ -927,7 +1179,7 @@ def export_verified_csv(
         "plan_version": run["plan_version"],
         "row_count": len(rows),
         "committed": commit_record is not None,
-        "schema_version": SCHEMA.version,
+        "schema_version": profile.schema.version,
     }
     filename = export_filename(str(migration_id), migration["filename"])
     return csv_text, filename, manifest
@@ -964,7 +1216,7 @@ def evidence(
             raise NotFound(
                 f"Run {run_id} does not belong to migration {migration_id}."
             )
-        return build_evidence(conn, migration_id, run_id, CONTRACT)
+        return build_evidence(conn, migration_id, run_id, _profile(conn, migration_id).contract)
 
     resolved = repository.latest_run_id(conn, migration_id)
     if resolved is None:
@@ -972,4 +1224,4 @@ def evidence(
             "This migration exists but has not been staged yet, so there is no "
             "evidence to report."
         )
-    return build_evidence(conn, migration_id, resolved, CONTRACT)
+    return build_evidence(conn, migration_id, resolved, _profile(conn, migration_id).contract)

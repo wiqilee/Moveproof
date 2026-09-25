@@ -17,6 +17,7 @@ transaction. There is no window where one is true and the other is not.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from dataclasses import asdict
@@ -28,6 +29,16 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from app.domain.contract import VerificationContract
+from app.domain.profiles import DestinationProfile, resolve as resolve_profile
+
+#: Key used by preflight_conflicts to report a composite-key collision as one
+#: value per row, so a caller can exclude exactly the colliding rows.
+COMPOSITE_KEY = "__key__"
+
+
+def _join_key(values: tuple[str, ...]) -> str:
+    """Render a composite key as one comparable string."""
+    return "\u001f".join(str(value) for value in values)
 from app.domain.types import (
     Check,
     ConflictPolicy,
@@ -103,6 +114,7 @@ def create_migration(
     content_type: str = "text/csv",
     storage_uri: str | None = None,
     uploaded_by: str = "operator",
+    destination_profile: str | None = None,
 ) -> uuid.UUID:
     """Record an upload.
 
@@ -132,8 +144,8 @@ def create_migration(
             """
             INSERT INTO moveproof.migrations
                 (id, filename, checksum, byte_size, encoding, delimiter,
-                 source_columns, row_count, state)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 source_columns, row_count, state, destination_profile)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 migration_id,
@@ -145,6 +157,7 @@ def create_migration(
                 list(source_file.columns),
                 source_file.row_count,
                 MigrationState.DRAFT.value,
+                destination_profile,
             ),
         )
         # Source rows are written once and never updated.
@@ -175,6 +188,36 @@ def create_migration(
         )
     log_event(conn, migration_id, None, "info", f"Uploaded {source_file.filename}")
     return migration_id
+
+
+def profile_for_migration(
+    conn: psycopg.Connection, migration_id: uuid.UUID
+) -> DestinationProfile:
+    """Which destination this migration targets.
+
+    A migration recorded before the column existed stores NULL, and resolve()
+    reads that as the customer profile, which is what those rows have always
+    been. Nothing is backfilled: the absence is already the answer.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT destination_profile FROM moveproof.migrations WHERE id = %s",
+            (migration_id,),
+        )
+        record = cur.fetchone()
+    if record is None:
+        raise NotFound(f"No migration {migration_id}")
+    return resolve_profile(record["destination_profile"])
+
+
+def profile_for_run(conn: psycopg.Connection, run_id: uuid.UUID) -> DestinationProfile:
+    """The profile of the migration a run belongs to."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT migration_id FROM moveproof.runs WHERE id = %s", (run_id,))
+        record = cur.fetchone()
+    if record is None:
+        raise NotFound(f"No run {run_id}")
+    return profile_for_migration(conn, record["migration_id"])
 
 
 def load_original_bytes(conn: psycopg.Connection, migration_id: uuid.UUID) -> bytes:
@@ -358,6 +401,63 @@ def save_plan(
         )
 
 
+def next_plan_version(conn: psycopg.Connection, migration_id: uuid.UUID) -> int:
+    """One past the highest version, approved or not.
+
+    Proposals and approvals share the version sequence, so a stored proposal
+    can never collide with an approved plan and both stay on the record.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT COALESCE(MAX(version), 0) AS v FROM moveproof.plans "
+            "WHERE migration_id = %s",
+            (migration_id,),
+        )
+        return int(cur.fetchone()["v"]) + 1
+
+
+def proposal_hash(plan: MigrationPlan) -> str:
+    """A stable fingerprint of a plan body.
+
+    Approval quotes this back. If the stored proposal has moved on since the
+    browser rendered it, the hashes disagree and the approval is refused
+    rather than applied to a plan nobody looked at.
+    """
+    body = json.dumps(_plan_body(plan), sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def store_proposal(
+    conn: psycopg.Connection,
+    migration_id: uuid.UUID,
+    plan: MigrationPlan,
+    source: str,
+) -> dict[str, Any]:
+    """Persist a validated proposal, unapproved, and return its identity.
+
+    Stored as an ordinary plan row with no approver and no approval time, so
+    it is visible in the plan history and immutable like every other version.
+    """
+    version = next_plan_version(conn, migration_id)
+    stored = MigrationPlan(
+        version=version,
+        mappings=plan.mappings,
+        proposed_by=plan.proposed_by,
+        key_column=plan.key_column,
+        date_format_policy=plan.date_format_policy,
+        duplicate_policy=plan.duplicate_policy,
+        required_field_policy=plan.required_field_policy,
+        conflict_policy=plan.conflict_policy,
+    )
+    save_plan(conn, migration_id, stored)
+    return {
+        "version": version,
+        "hash": proposal_hash(stored),
+        "source": source,
+        "proposed_by": stored.proposed_by,
+    }
+
+
 def record_approval(
     conn: psycopg.Connection,
     migration_id: uuid.UUID,
@@ -420,6 +520,11 @@ def persist_run(
     Replaying a request is therefore safe: a retried network call cannot stage
     the same rows twice.
     """
+    # The staging table is decided by the destination, which is resolved from
+    # the migration rather than assumed. Without this the function referred to
+    # a `profile` it never defined.
+    profile = profile_for_migration(conn, migration_id)
+
     existing = find_run_by_key(conn, migration_id, idempotency_key)
     if existing is not None:
         log_event(
@@ -473,9 +578,11 @@ def persist_run(
                     for error in result.errors
                 ],
             )
+        # The table name is an allowlisted literal from the profile registry,
+        # never anything derived from a request.
         cur.executemany(
-            """
-            INSERT INTO staging.customers
+            f"""
+            INSERT INTO {profile.staging_table}
                 (run_id, row_number, source_key, values, disposition, reason)
             VALUES (%s, %s, %s, %s, %s, %s)
             """,
@@ -542,14 +649,24 @@ def load_checks(conn: psycopg.Connection, run_id: uuid.UUID) -> list[dict[str, A
 
 
 def load_staged_rows(
-    conn: psycopg.Connection, run_id: uuid.UUID, committable_only: bool = False
+    conn: psycopg.Connection,
+    run_id: uuid.UUID,
+    committable_only: bool = False,
+    profile: DestinationProfile | None = None,
 ) -> list[dict[str, Any]]:
+    """Staged rows for one run, from that run's own staging table.
+
+    `profile` is resolved from the run when it is not supplied, so every
+    existing caller keeps working and a customer run keeps reading
+    staging.customers.
+    """
+    profile = profile or profile_for_run(conn, run_id)
     clause = "AND disposition = 'staged'" if committable_only else ""
     with conn.cursor() as cur:
         cur.execute(
             f"""
             SELECT row_number, source_key, values, disposition, reason
-            FROM staging.customers
+            FROM {profile.staging_table}
             WHERE run_id = %s {clause}
             ORDER BY row_number
             """,
@@ -604,7 +721,7 @@ def list_migrations(conn: psycopg.Connection, limit: int = 100) -> list[dict[str
         cur.execute(
             """
             SELECT m.id, m.filename, m.checksum, m.row_count, m.state,
-                   m.created_at, m.updated_at,
+                   m.created_at, m.updated_at, m.destination_profile,
                    (SELECT MAX(version) FROM moveproof.plans p
                      WHERE p.migration_id = m.id) AS latest_plan_version,
                    (SELECT MAX(version) FROM moveproof.plans p
@@ -822,38 +939,96 @@ def list_events(conn: psycopg.Connection, migration_id: uuid.UUID) -> list[dict[
 # --------------------------------------------------------------------- commit
 
 
+def _composite_match(table: str, columns: tuple[str, ...]) -> str:
+    """A join that matches rows on a multi-column key.
+
+    `(a, b) = ANY(%s)` reads naturally but requires a registered composite
+    type on the server; a Python list of tuples does not adapt to one. This
+    joins against two unnested arrays instead, which is ordinary SQL and fully
+    parameterised.
+
+    Only column and table names are interpolated, and every one of them comes
+    from the profile registry allowlist. Values are always bound.
+    """
+    first, second = columns
+    return f"""
+        FROM {table} AS t
+        JOIN (
+            SELECT unnest(%s::text[]) AS k1, unnest(%s::text[]) AS k2
+        ) AS k ON t.{first}::text = k.k1 AND t.{second}::text = k.k2
+    """
+
+
 def preflight_conflicts(
-    conn: psycopg.Connection, run_id: uuid.UUID
+    conn: psycopg.Connection,
+    run_id: uuid.UUID,
+    profile: DestinationProfile | None = None,
 ) -> dict[str, list[str]]:
     """Find destination rows that would collide before writing anything.
 
-    Both unique constraints are checked, not only the primary key. An existing
-    email under a different customer id would otherwise surface as a mid-insert
-    integrity error with some rows already written.
-    """
-    rows = load_staged_rows(conn, run_id, committable_only=True)
-    keys = [str(row["values"]["customer_id"]) for row in rows]
-    emails = [str(row["values"]["email"]) for row in rows]
+    Every uniqueness constraint the profile declares is checked, not only the
+    key. A collision discovered mid-insert would otherwise surface as an
+    integrity error with part of the batch already written.
 
-    if not keys:
-        return {"customer_id": [], "email": []}
+    The two profiles differ in shape, and the difference is real. A customer is
+    unique by `customer_id`, and separately by `email`. A robot calibration is
+    unique by the pair `(robot_id, joint_name)`: one robot has many joints, so
+    neither column identifies a row on its own.
+
+    Returns one list per declared unique column, plus `COMPOSITE_KEY` holding
+    the colliding keys as joined tuples, which is what a caller needs in order
+    to exclude exactly the colliding rows.
+    """
+    profile = profile or profile_for_run(conn, run_id)
+    rows = load_staged_rows(conn, run_id, committable_only=True, profile=profile)
+
+    conflicts: dict[str, list[str]] = {
+        column: [] for column in (*profile.key_columns, *profile.unique_columns)
+    }
+    conflicts[COMPOSITE_KEY] = []
+    if not rows:
+        return conflicts
+
+    # Every identifier below comes from the profile registry, never a request.
+    table = profile.destination_table
+    key_columns = profile.key_columns
+    keys = [profile.key_of(row["values"]) for row in rows]
 
     with conn.cursor() as cur:
-        cur.execute(
-            "SELECT customer_id FROM public.customers WHERE customer_id = ANY(%s)",
-            (keys,),
-        )
-        existing_keys = [record["customer_id"] for record in cur.fetchall()]
-        cur.execute(
-            """
-            SELECT email FROM public.customers
-            WHERE email = ANY(%s) AND customer_id <> ALL(%s)
-            """,
-            (emails, keys),
-        )
-        existing_emails = [record["email"] for record in cur.fetchall()]
+        if len(key_columns) == 1:
+            column = key_columns[0]
+            cur.execute(
+                f"SELECT {column} FROM {table} WHERE {column} = ANY(%s)",
+                ([key[0] for key in keys],),
+            )
+            found = [(record[column],) for record in cur.fetchall()]
+            conflicts[column] = sorted(value for (value,) in found)
+        else:
+            first, second = key_columns
+            cur.execute(
+                f"SELECT t.{first}, t.{second} {_composite_match(table, (first, second))}",
+                ([key[0] for key in keys], [key[1] for key in keys]),
+            )
+            found = [(record[first], record[second]) for record in cur.fetchall()]
+            conflicts[first] = sorted({value for value, _ in found})
+            conflicts[second] = sorted({value for _, value in found})
 
-    return {"customer_id": sorted(existing_keys), "email": sorted(existing_emails)}
+        conflicts[COMPOSITE_KEY] = sorted(_join_key(key) for key in found)
+
+        # Unique columns outside the key, checked independently. A row whose
+        # key already collides is excluded, so one row is reported once.
+        for column in profile.unique_columns:
+            values = [str(row["values"][column]) for row in rows]
+            cur.execute(
+                f"""
+                SELECT {column} FROM {table}
+                WHERE {column} = ANY(%s) AND {key_columns[0]} <> ALL(%s)
+                """,
+                (values, [key[0] for key in keys]),
+            )
+            conflicts[column] = sorted(record[column] for record in cur.fetchall())
+
+    return conflicts
 
 
 def assert_commit_allowed(
@@ -971,18 +1146,26 @@ def commit_run(
 
     assert_commit_allowed(conn, migration_id, run_id, contract)
 
-    rows = load_staged_rows(conn, run_id, committable_only=True)
+    # The destination is decided by the migration, never by the request.
+    profile = profile_for_migration(conn, migration_id)
+
+    rows = load_staged_rows(conn, run_id, committable_only=True, profile=profile)
     expected = len(rows)
 
-    conflicts = preflight_conflicts(conn, run_id)
-    conflicting_keys = set(conflicts["customer_id"])
+    conflicts = preflight_conflicts(conn, run_id, profile=profile)
+    conflicting_keys = set(conflicts[COMPOSITE_KEY])
 
-    if conflicts["email"]:
-        raise CommitRefused(
-            f"{len(conflicts['email'])} email address(es) already exist in the "
-            "destination under a different customer id. No conflict policy covers "
-            "a unique constraint other than the primary key."
-        )
+    # A unique constraint outside the key is never covered by a conflict
+    # policy. Skipping such a row would leave the destination holding somebody
+    # else's value under this migration's name.
+    for column in profile.unique_columns:
+        colliding = conflicts.get(column) or []
+        if colliding:
+            raise CommitRefused(
+                f"{len(colliding)} value(s) in {column} already exist in the "
+                f"destination under a different {profile.key_columns[0]}. No "
+                "conflict policy covers a unique constraint other than the key."
+            )
 
     if conflicting_keys:
         if conflict_policy is ConflictPolicy.FAIL_CLOSED:
@@ -999,27 +1182,34 @@ def commit_run(
             )
 
     to_write = [
-        row
-        for row in rows
-        if str(row["values"]["customer_id"]) not in conflicting_keys
+        row for row in rows if _join_key(profile.key_of(row["values"])) not in conflicting_keys
     ]
     skipped = expected - len(to_write)
 
+    # Column list and placeholders are built from the profile's allowlisted
+    # write columns, so the statement is fixed for a given destination and no
+    # part of it comes from the data.
+    columns = ", ".join(profile.write_columns)
+    placeholders = ", ".join(["%s"] * len(profile.write_columns))
+    key_set = set(profile.key_columns)
+
     with conn.cursor() as cur:
         cur.executemany(
-            """
-            INSERT INTO public.customers
-                (customer_id, full_name, email, signup_date, balance, region, migration_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            f"""
+            INSERT INTO {profile.destination_table}
+                ({columns}, migration_id)
+            VALUES ({placeholders}, %s)
             """,
             [
                 (
-                    str(row["values"]["customer_id"]),
-                    row["values"]["full_name"],
-                    row["values"]["email"],
-                    row["values"]["signup_date"],
-                    row["values"]["balance"],
-                    row["values"].get("region"),
+                    *(
+                        # Identifiers keep their text form. Everything else is
+                        # written as the executor produced it, already typed.
+                        str(row["values"][column])
+                        if column in key_set
+                        else row["values"].get(column)
+                        for column in profile.write_columns
+                    ),
                     migration_id,
                 )
                 for row in to_write
@@ -1031,15 +1221,28 @@ def commit_run(
         # first commit and diverge on any migration that already has rows in
         # the destination, which would make the reconciliation meaningless in
         # precisely the case it exists to catch.
-        written_keys = [str(row["values"]["customer_id"]) for row in to_write]
+        written_keys = [profile.key_of(row["values"]) for row in to_write]
         if written_keys:
-            cur.execute(
-                """
-                SELECT COUNT(*) AS written FROM public.customers
-                WHERE migration_id = %s AND customer_id = ANY(%s)
-                """,
-                (migration_id, written_keys),
-            )
+            if len(profile.key_columns) == 1:
+                column = profile.key_columns[0]
+                cur.execute(
+                    f"""
+                    SELECT COUNT(*) AS written FROM {profile.destination_table}
+                    WHERE migration_id = %s AND {column} = ANY(%s)
+                    """,
+                    (migration_id, [key[0] for key in written_keys]),
+                )
+            else:
+                first, second = profile.key_columns
+                match = _composite_match(profile.destination_table, (first, second))
+                cur.execute(
+                    f"SELECT COUNT(*) AS written {match} WHERE t.migration_id = %s",
+                    (
+                        [key[0] for key in written_keys],
+                        [key[1] for key in written_keys],
+                        migration_id,
+                    ),
+                )
             written = cur.fetchone()["written"]
         else:
             written = 0
@@ -1095,16 +1298,26 @@ def mark_verified(conn: psycopg.Connection, run_id: uuid.UUID) -> None:
         )
 
 
-def remove_committed_rows(conn: psycopg.Connection, migration_id: uuid.UUID) -> int:
+def remove_committed_rows(
+    conn: psycopg.Connection,
+    migration_id: uuid.UUID,
+    profile: DestinationProfile | None = None,
+) -> int:
     """Delete the destination rows this migration wrote, and nothing else.
 
     Split out from rollback_migration because deletion needs the same removal
     without the audit trail that follows it. Writing an event about a record
     that is about to be cascade-deleted is work with no reader.
+
+    Scoped by migration and by that migration's own destination table, so a
+    robotics rollback cannot reach customer rows and a customer rollback
+    cannot reach robotics rows.
     """
+    profile = profile or profile_for_migration(conn, migration_id)
     with conn.cursor() as cur:
         cur.execute(
-            "DELETE FROM public.customers WHERE migration_id = %s", (migration_id,)
+            f"DELETE FROM {profile.destination_table} WHERE migration_id = %s",
+            (migration_id,),
         )
         return cur.rowcount or 0
 
@@ -1130,11 +1343,17 @@ def rollback_migration(
     return removed
 
 
-def count_committed_rows(conn: psycopg.Connection, migration_id: uuid.UUID) -> int:
+def count_committed_rows(
+    conn: psycopg.Connection,
+    migration_id: uuid.UUID,
+    profile: DestinationProfile | None = None,
+) -> int:
     """How many destination rows this migration still holds."""
+    profile = profile or profile_for_migration(conn, migration_id)
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT COUNT(*) AS n FROM public.customers WHERE migration_id = %s",
+            f"SELECT COUNT(*) AS n FROM {profile.destination_table} "
+            "WHERE migration_id = %s",
             (migration_id,),
         )
         return cur.fetchone()["n"]

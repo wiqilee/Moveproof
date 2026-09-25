@@ -27,9 +27,9 @@ export interface UiMapping {
 }
 
 const OPERATION_LABELS: Record<string, string> = {
-  preserve_identifier_as_string: "Preserve identifier as string, VARCHAR(20)",
+  preserve_identifier_as_string: "Preserve value as text",
   cast_to_integer: "Cast with explicit rule to INTEGER",
-  cast_to_decimal: "Cast with explicit rule to NUMERIC(12,2)",
+  cast_to_decimal: "Cast with explicit rule to an exact decimal",
   normalize_whitespace: "Normalize whitespace",
   rename_field: "Rename field",
   parse_date: "Parse date under the approved format policy",
@@ -37,11 +37,35 @@ const OPERATION_LABELS: Record<string, string> = {
   deduplicate: "Deduplication policy: keep first exact duplicate",
 };
 
+/**
+ * Columns whose value is an identifier rather than ordinary text.
+ *
+ * `preserve_identifier_as_string` is one operation serving two purposes: it
+ * keeps `00127` and `0017` intact, and it also carries ordinary strings like
+ * `region` or `sensor_frame` through untouched. The operation code is correct
+ * for both, so the fix belongs in presentation rather than in a rename that
+ * would make the code wrong for half its uses.
+ *
+ * Identifier wording is therefore chosen per column, not per operation.
+ */
+const IDENTIFIER_COLUMNS = new Set(["customer_id", "robot_id"]);
+
+function operationLabel(mapping: ApiPlanMapping): string {
+  const base = OPERATION_LABELS[mapping.operation] ?? mapping.operation;
+
+  if (mapping.operation !== "preserve_identifier_as_string") return base;
+
+  const column = mapping.destination_column ?? mapping.source_column;
+  return IDENTIFIER_COLUMNS.has(column)
+    ? "Preserve identifier as text, leading zeros intact"
+    : base;
+}
+
 export function toUiMapping(mapping: ApiPlanMapping): UiMapping {
   return {
     sourceColumn: mapping.source_column,
     destinationColumn: mapping.destination_column,
-    operationLabel: OPERATION_LABELS[mapping.operation] ?? mapping.operation,
+    operationLabel: operationLabel(mapping),
     status: mapping.status as MappingStatus,
     note: mapping.note,
     requiresAcknowledgement: mapping.requires_acknowledgement,

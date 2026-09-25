@@ -78,13 +78,27 @@ interface MigrationStore {
   // Actions
   refreshHealth: () => Promise<void>;
   refreshMigrations: () => Promise<void>;
-  uploadFile: (file: File) => Promise<string | null>;
+  uploadFile: (file: File, destinationProfile?: string) => Promise<string | null>;
+  /**
+   * The destination this migration targets.
+   *
+   * Chosen before upload, because the backend records it on the migration row
+   * and every later stage resolves the contract from there. Null until a
+   * migration exists, and for a migration recorded before profiles existed,
+   * which the backend reads as the customer profile.
+   */
+  destinationProfile: string | null;
+  setDestinationProfile: (profile: string) => void;
   selectMigration: (id: string) => Promise<void>;
   proposePlan: (profile: "safe" | "legacy" | "model") => Promise<void>;
   approvePlan: (input: {
-    profile: "safe" | "legacy";
+    /** Where the proposal came from. The model source is approvable now. */
+    source: "safe" | "legacy" | "model";
     acknowledgements: string[];
+    /** How an ambiguous date is to be read. Required when one is flagged. */
     dateFormatPolicy?: string | null;
+    /** Per column, how an ambiguous decimal is to be read. */
+    decimalConventions?: Record<string, string>;
     requiredFieldPolicy?: string | null;
     conflictPolicy?: string | null;
   }) => Promise<boolean>;
@@ -107,6 +121,7 @@ export function MigrationProvider({ children }: { children: ReactNode }) {
 
   const [migrationId, setMigrationId] = useState<string | null>(null);
   const [filename, setFilename] = useState<string | null>(null);
+  const [destinationProfile, setDestinationProfile] = useState<string | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [planVersion, setPlanVersion] = useState<number | null>(null);
   const [proposal, setProposal] = useState<ApiPlanProposal | null>(null);
@@ -178,18 +193,24 @@ export function MigrationProvider({ children }: { children: ReactNode }) {
     setVerification(null);
     setRepairProposal(null);
     setEvidence(null);
+    setDestinationProfile(null);
     setRunPhase("not_started");
     setCommitted(false);
     setError(null);
   }, []);
 
   const uploadFile = useCallback(
-    async (file: File) => {
-      const result = await guard("Uploading and parsing", () => api.upload(file));
+    async (file: File, profile?: string) => {
+      const result = await guard("Uploading and parsing", () =>
+        api.upload(file, profile)
+      );
       if (!result) return null;
+      // reset() clears the profile too, so it is restored after rather than
+      // before: the destination the operator chose survives the upload.
       reset();
       setMigrationId(result.migration_id);
       setFilename(result.filename);
+      setDestinationProfile(profile ?? null);
       return result.migration_id;
     },
     [guard, reset]
@@ -201,6 +222,8 @@ export function MigrationProvider({ children }: { children: ReactNode }) {
         const migration = await api.getMigration(id);
         setMigrationId(migration.id);
         setFilename(migration.filename);
+        // Null on an older migration, which the backend resolves to customers.
+        setDestinationProfile(migration.destination_profile ?? null);
         const approved = migration.plans.filter((p) => p.approved_at !== null);
         setPlanVersion(approved.length ? approved[approved.length - 1].version : null);
         setCommitted(migration.state === "committed");
@@ -244,18 +267,25 @@ export function MigrationProvider({ children }: { children: ReactNode }) {
 
   const approvePlan = useCallback(
     async (input: {
-      profile: "safe" | "legacy";
+      source: "safe" | "legacy" | "model";
       acknowledgements: string[];
       dateFormatPolicy?: string | null;
+      decimalConventions?: Record<string, string>;
       requiredFieldPolicy?: string | null;
       conflictPolicy?: string | null;
     }) => {
       if (!migrationId) return false;
       const result = await guard("Approving the plan", () =>
         api.approvePlan(migrationId, {
-          profile: input.profile,
+          source: input.source,
           acknowledgements: input.acknowledgements,
+          // The identity of the proposal the reviewer actually saw. The
+          // browser sends no mappings: the server reloads its own stored plan
+          // and revalidates it before anything becomes approvable.
+          proposal_version: proposal?.proposal?.version,
+          proposal_hash: proposal?.proposal?.hash,
           date_format_policy: input.dateFormatPolicy ?? null,
+          decimal_conventions: input.decimalConventions,
           required_field_policy: input.requiredFieldPolicy ?? null,
           conflict_policy: input.conflictPolicy ?? null,
         })
@@ -270,7 +300,7 @@ export function MigrationProvider({ children }: { children: ReactNode }) {
       setRunPhase("not_started");
       return true;
     },
-    [guard, migrationId]
+    [guard, migrationId, proposal]
   );
 
   const startRun = useCallback(async () => {
@@ -385,6 +415,8 @@ export function MigrationProvider({ children }: { children: ReactNode }) {
     refreshHealth,
     refreshMigrations,
     uploadFile,
+    destinationProfile,
+    setDestinationProfile,
     selectMigration,
     proposePlan,
     approvePlan,

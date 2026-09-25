@@ -104,8 +104,14 @@ def build_evidence(
             "columns": migration["source_columns"],
         },
         "destination": {
+            # The profile is resolved from the migration rather than passed in,
+            # so an evidence report always names the destination the rows
+            # actually went to. A migration recorded before profiles existed
+            # resolves to the customer profile, which is what it has always been.
+            "profile": repository.profile_for_migration(conn, migration_id).id,
             "schema": contract.destination_schema,
             "schema_version": contract.destination_schema_version,
+            "table": contract.destination_schema,
         },
         "plan": {
             "version": plan["version"],

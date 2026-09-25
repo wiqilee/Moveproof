@@ -10,8 +10,9 @@ shares the planner's assumptions will share the planner's blind spots.
 
 from __future__ import annotations
 
+import re
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from app.domain.types import (
     Check,
@@ -34,7 +35,13 @@ def verify(
     destination_key_column: str,
     date_columns: tuple[str, ...] = (),
     unverified_properties: tuple[tuple[str, str, str], ...] = (),
+    identity_columns: tuple[str, ...] = (),
     reconciliation_fields: tuple[str, ...] = (),
+    #: Decisions a human approved, read from the approved plan rather than
+    #: from anything a browser sent. The verifier needs them to recompute what
+    #: the staged values must be; it never uses them to transform anything.
+    date_format_policy: str | None = None,
+    decimal_conventions: dict[str, str] | None = None,
 ) -> list[Check]:
     """Run every check and return the results.
 
@@ -48,9 +55,9 @@ def verify(
         _identifier_preservation(by_row, result, key_column, destination_key_column),
         _duplicate_accounting(result),
         _required_fields(result, schema),
-        _uniqueness(result, destination_key_column),
-        _decimal_precision(by_row, result, schema),
-        _date_parsing(by_row, result, date_columns),
+        _uniqueness(result, destination_key_column, identity_columns),
+        _decimal_precision(by_row, result, schema, decimal_conventions),
+        _date_parsing(by_row, result, date_columns, date_format_policy),
         _transform_rejections(result),
         _canonical_reconciliation(
             by_row, result, key_column, destination_key_column, reconciliation_fields
@@ -280,7 +287,23 @@ def _required_fields(result: ExecutionResult, schema: DestinationSchema) -> Chec
     )
 
 
-def _uniqueness(result: ExecutionResult, destination_key_column: str) -> Check:
+def _uniqueness(
+    result: ExecutionResult,
+    destination_key_column: str,
+    identity_columns: tuple[str, ...] = (),
+) -> Check:
+    """Are the committable rows distinct in the destination?
+
+    Distinctness is decided by the destination's own identity. A robot has one
+    calibration row per joint, so (robot_id, joint_name) is what must be
+    unique; checking robot_id alone would report three joints of the same
+    robot as duplicates and block a correct migration.
+
+    Falling back to the key column preserves the customer behaviour, where the
+    identifier is unique on its own.
+    """
+    columns = identity_columns or (destination_key_column,)
+    label = ", ".join(columns)
     seen: dict[str, int] = {}
     duplicates: list[Evidence] = []
     duplicate_count = 0
@@ -288,15 +311,17 @@ def _uniqueness(result: ExecutionResult, destination_key_column: str) -> Check:
     for staged in result.staged:
         if not staged.is_committable:
             continue
-        value = staged.values.get(destination_key_column)
-        text = "" if value is None else str(value)
+        text = "\u001f".join(
+            "" if staged.values.get(column) is None else str(staged.values.get(column))
+            for column in columns
+        )
         if text in seen:
             duplicate_count += 1
             if len(duplicates) < MAX_EVIDENCE_PER_CHECK:
                 duplicates.append(
                     Evidence(
-                        row_key=text,
-                        field_name=destination_key_column,
+                        row_key=text.replace("\u001f", " + "),
+                        field_name=label,
                         source_value=f"row {seen[text]}",
                         destination_value=f"row {staged.row_number}",
                     )
@@ -307,17 +332,17 @@ def _uniqueness(result: ExecutionResult, destination_key_column: str) -> Check:
     if duplicate_count:
         return Check(
             check_id="uniqueness",
-            name="Unique constraint on the identifier",
-            expected=f"{destination_key_column} is unique across committable rows",
+            name="Unique constraint on the destination identity",
+            expected=f"({label}) is unique across committable rows",
             observed=f"{duplicate_count} duplicate value(s) would violate the constraint",
             status=CheckStatus.FAILED,
             evidence=duplicates,
         )
     return Check(
         check_id="uniqueness",
-        name="Unique constraint on the identifier",
-        expected=f"{destination_key_column} is unique across committable rows",
-        observed=f"{len(seen)} committable rows, all identifiers distinct",
+        name="Unique constraint on the destination identity",
+        expected=f"({label}) is unique across committable rows",
+        observed=f"{len(seen)} committable rows, all distinct on ({label})",
         status=CheckStatus.PASSED,
     )
 
@@ -326,8 +351,16 @@ def _decimal_precision(
     by_row: dict[int, SourceRow],
     result: ExecutionResult,
     schema: DestinationSchema,
+    decimal_conventions: dict[str, str] | None = None,
 ) -> Check:
-    """Compare each staged decimal against the exact source value."""
+    """Compare each staged decimal against the exact source value.
+
+    A source column may hold values Decimal cannot read directly, such as
+    1,250.00 beside 1250,00. Skipping those and reporting a pass would be the
+    worst outcome available: a green check computed from nothing. The approved
+    per-column convention is applied here independently, and any value that
+    still has no determined reading is reported rather than dropped.
+    """
     decimal_columns = [c for c in schema.columns if c.numeric_precision is not None]
     if not decimal_columns:
         return Check(
@@ -339,7 +372,9 @@ def _decimal_precision(
         )
 
     drifted: list[Evidence] = []
+    unreadable: list[Evidence] = []
     drift_count = 0
+    unreadable_count = 0
     compared = 0
 
     for staged in result.staged:
@@ -355,9 +390,21 @@ def _decimal_precision(
             raw = source.values.get(column.name)
             if raw is None or raw.strip() == "":
                 continue
-            try:
-                expected_value = Decimal(raw.strip())
-            except Exception:
+            convention = (decimal_conventions or {}).get(column.name)
+            expected_value = _expected_decimal(raw, convention)
+            if expected_value is None:
+                # Counted, never silently skipped: a value nobody could verify
+                # is not a value that passed.
+                unreadable_count += 1
+                if len(unreadable) < MAX_EVIDENCE_PER_CHECK:
+                    unreadable.append(
+                        Evidence(
+                            row_key=staged.source_key,
+                            field_name=column.name,
+                            source_value=raw,
+                            destination_value=str(actual),
+                        )
+                    )
                 continue
             compared += 1
             if expected_value != actual:
@@ -381,25 +428,123 @@ def _decimal_precision(
             status=CheckStatus.FAILED,
             evidence=drifted,
         )
+    if unreadable_count:
+        return Check(
+            check_id="decimal_precision",
+            name="Decimal precision preservation",
+            expected="Every staged decimal is independently recomputed from its source",
+            observed=(
+                f"{compared} value(s) compared and exact, but {unreadable_count} "
+                "source value(s) have no approved reading, so they were not verified"
+            ),
+            status=CheckStatus.REVIEW,
+            evidence=unreadable,
+        )
+
     return Check(
         check_id="decimal_precision",
         name="Decimal precision preservation",
         expected="Every staged decimal equals its source value exactly",
         observed=f"{compared} decimal value(s) compared, all exact",
-        status=CheckStatus.PASSED,
+        status=CheckStatus.PASSED if compared else CheckStatus.NOT_VERIFIED,
     )
+
+
+#: Verifier-side readers.
+#:
+#: These deliberately duplicate what the executor does rather than importing
+#: it. A verifier that calls the transformer it is checking proves only that
+#: the code is self-consistent. Two independent implementations disagreeing is
+#: the signal worth having, so these are written from the approved policy
+#: rather than shared with app.execute.
+_V_DOT_DECIMAL = re.compile(r"^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)\.\d+$")
+_V_COMMA_DECIMAL = re.compile(r"^[+-]?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{1,2}$")
+_V_PLAIN = re.compile(r"^[+-]?\d+$")
+_V_SLASH_DATE = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})$")
+_V_ISO_DATE = re.compile(r"^(\d{4})-(\d{1,2})-(\d{1,2})$")
+
+
+def _expected_date(raw: str, policy: str | None) -> date | None:
+    """The date the approved policy says this source value must become.
+
+    Returns None when no reading is determined, which the caller treats as
+    review rather than as agreement.
+    """
+    text = raw.strip()
+
+    iso = _V_ISO_DATE.match(text)
+    if iso:
+        year, month, day = (int(part) for part in iso.groups())
+        try:
+            return date(year, month, day)
+        except ValueError:
+            return None
+
+    slash = _V_SLASH_DATE.match(text)
+    if not slash or policy is None:
+        return None
+
+    first, second, year = (int(part) for part in slash.groups())
+    if policy == "day_first":
+        day, month = first, second
+    elif policy == "month_first":
+        month, day = first, second
+    else:
+        return None
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
+
+
+def _expected_decimal(raw: str, convention: str | None) -> Decimal | None:
+    """The decimal the approved convention says this source value must become.
+
+    Returns None when the value is not readable under the approved rule, which
+    the caller counts as unverifiable rather than as a pass.
+    """
+    text = raw.strip()
+
+    if _V_PLAIN.match(text):
+        return Decimal(text)
+
+    dot = bool(_V_DOT_DECIMAL.match(text))
+    comma = bool(_V_COMMA_DECIMAL.match(text))
+
+    if convention is None:
+        # No approved reading: only a form Decimal accepts outright counts.
+        try:
+            return Decimal(text)
+        except InvalidOperation:
+            return None
+
+    if convention == "dot_decimal" and dot:
+        return Decimal(text.replace(",", ""))
+    if convention == "comma_decimal" and comma:
+        return Decimal(text.replace(".", "").replace(",", "."))
+    if convention == "strict_either":
+        if dot and not comma:
+            return Decimal(text.replace(",", ""))
+        if comma and not dot:
+            return Decimal(text.replace(".", "").replace(",", "."))
+    return None
 
 
 def _date_parsing(
     by_row: dict[int, SourceRow],
     result: ExecutionResult,
     date_columns: tuple[str, ...],
+    date_format_policy: str | None = None,
 ) -> Check:
-    """Report dates that could not be parsed, and dates that are ambiguous.
+    """Prove the approved date reading was the one applied.
 
-    A value such as 03/04/2024 reads correctly two ways. The verifier reports
-    it as review required rather than accepting whichever reading happened to
-    be applied.
+    An ambiguous value such as 03/04/2026 reads two ways, and merely noticing
+    that is not verification. Once a human has approved day first or month
+    first, this check independently recomputes what the staged value must be
+    under that approval and compares it. Disagreement is a failure.
+
+    With no approved policy an ambiguous value has no determined reading, so
+    it is reported as review required and the commit gate holds.
     """
     if not date_columns:
         return Check(
@@ -410,9 +555,11 @@ def _date_parsing(
             status=CheckStatus.NOT_VERIFIED,
         )
 
-    ambiguous: list[Evidence] = []
-    ambiguous_count = 0
-    parsed = 0
+    mismatched: list[Evidence] = []
+    undetermined: list[Evidence] = []
+    mismatch_count = 0
+    undetermined_count = 0
+    compared = 0
 
     for staged in result.staged:
         if not staged.is_committable:
@@ -424,39 +571,72 @@ def _date_parsing(
             value = staged.values.get(column)
             if not isinstance(value, date):
                 continue
-            parsed += 1
             raw = source.values.get(column, "")
-            if not _is_ambiguous(raw):
-                continue
-            ambiguous_count += 1
-            if len(ambiguous) < MAX_EVIDENCE_PER_CHECK:
-                ambiguous.append(
-                    Evidence(
-                        row_key=staged.source_key,
-                        field_name=column,
-                        source_value=raw,
-                        destination_value=value.isoformat(),
-                    )
-                )
+            expected_date = _expected_date(raw, date_format_policy)
 
-    if ambiguous_count:
+            if expected_date is None:
+                undetermined_count += 1
+                if len(undetermined) < MAX_EVIDENCE_PER_CHECK:
+                    undetermined.append(
+                        Evidence(
+                            row_key=staged.source_key,
+                            field_name=column,
+                            source_value=raw,
+                            destination_value=str(value),
+                        )
+                    )
+                continue
+
+            compared += 1
+            if expected_date != value:
+                mismatch_count += 1
+                if len(mismatched) < MAX_EVIDENCE_PER_CHECK:
+                    mismatched.append(
+                        Evidence(
+                            row_key=staged.source_key,
+                            field_name=column,
+                            source_value=f"{raw} read as {date_format_policy}",
+                            destination_value=str(value),
+                        )
+                    )
+
+    policy_label = date_format_policy or "no approved policy"
+
+    if mismatch_count:
         return Check(
             check_id="date_parsing",
             name="Date parsing and format confirmation",
-            expected="Every date has one unambiguous reading under the approved policy",
+            expected=f"Every staged date matches the approved {policy_label} reading",
             observed=(
-                f"{ambiguous_count} value(s) read correctly as either day first or "
-                "month first. The applied policy is a choice, not a fact."
+                f"{mismatch_count} staged date(s) do not match the approved "
+                f"{policy_label} reading of the source value"
+            ),
+            status=CheckStatus.FAILED,
+            evidence=mismatched,
+        )
+
+    if undetermined_count:
+        return Check(
+            check_id="date_parsing",
+            name="Date parsing and format confirmation",
+            expected="Every date has one approved reading",
+            observed=(
+                f"{undetermined_count} source date(s) have no determined reading "
+                f"under {policy_label}, so the staged value was not confirmed"
             ),
             status=CheckStatus.REVIEW,
-            evidence=ambiguous,
+            evidence=undetermined,
         )
+
     return Check(
         check_id="date_parsing",
         name="Date parsing and format confirmation",
-        expected="Every date has one unambiguous reading under the approved policy",
-        observed=f"{parsed} date(s) parsed, none ambiguous",
-        status=CheckStatus.PASSED,
+        expected=f"Every staged date matches the approved {policy_label} reading",
+        observed=(
+            f"{compared} staged date(s) independently recomputed from the source "
+            f"under {policy_label} and matched"
+        ),
+        status=CheckStatus.PASSED if compared else CheckStatus.NOT_VERIFIED,
     )
 
 

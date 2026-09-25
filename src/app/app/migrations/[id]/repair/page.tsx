@@ -39,7 +39,7 @@ export default function RepairPage() {
   }, [activeId, migrationId, selectMigration, loadRepairProposal]);
 
   const approveAndRerun = async () => {
-    const approved = await approvePlan({ profile: "safe", acknowledgements: [] });
+    const approved = await approvePlan({ source: "safe", acknowledgements: [] });
     if (!approved) return;
     const runId = await startRun();
     if (!runId) return;

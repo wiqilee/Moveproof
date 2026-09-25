@@ -103,9 +103,15 @@ export function MappingStep({
   const { proposal, proposePlan, approvePlan, busy, health, migrationId } = useMigration();
   const [profile, setProfile] = useState<Profile>("safe");
   const [acknowledged, setAcknowledged] = useState<string[]>([]);
+  // Human decisions, not configuration. Each appears only when deterministic
+  // validation has actually raised the matching concern.
+  const [datePolicy, setDatePolicy] = useState<string>("");
+  const [decimalConventions, setDecimalConventions] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setAcknowledged([]);
+    setDatePolicy("");
+    setDecimalConventions({});
     void proposePlan(profile);
     // proposePlan is stable and depends on the migration id.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,10 +119,36 @@ export function MappingStep({
 
   const mappings = proposal?.plan.mappings.map(toUiMapping) ?? [];
   const needed = proposal?.acknowledgement_columns ?? [];
+
+  // A date needs a reading when the plan carries a parse_date mapping and no
+  // policy was set. ISO data arrives with a policy already, so nothing is
+  // asked and the step stays unobtrusive.
+  const dateColumns = (proposal?.plan.mappings ?? [])
+    .filter((mapping: ApiPlanMapping) => mapping.operation === "parse_date")
+    .map((mapping: ApiPlanMapping) => mapping.source_column);
+  const dateUndecided =
+    dateColumns.length > 0 && !proposal?.plan.date_format_policy;
+
+  // A decimal column needs a reading when the deterministic advisory says the
+  // sample mixes conventions. The advisory names the column.
+  const decimalColumns = (proposal?.issues ?? [])
+    .filter(
+      (issue) =>
+        !issue.fatal && issue.reason.toLowerCase().includes("decimal separator")
+    )
+    .map((issue) => issue.column);
+
+  const decisionsMade =
+    (!dateUndecided || datePolicy !== "") &&
+    decimalColumns.every((column) => decimalConventions[column]);
   const fatal = proposal?.issues.filter((issue) => issue.fatal) ?? [];
   const allAcknowledged = needed.every((column) => acknowledged.includes(column));
   const canApprove =
-    proposal !== null && proposal.is_executable && allAcknowledged && busy === null;
+    proposal !== null &&
+    proposal.is_executable &&
+    allAcknowledged &&
+    decisionsMade &&
+    busy === null;
 
   const toggle = (column: string, checked: boolean) =>
     setAcknowledged((current) =>
@@ -124,9 +156,16 @@ export function MappingStep({
     );
 
   const approve = async () => {
+    // The model source is approved as itself now. The browser sends the
+    // decisions and the proposal identity; the server reloads its own stored
+    // plan and revalidates it.
     const ok = await approvePlan({
-      profile: profile === "model" ? "safe" : profile,
+      source: profile,
       acknowledgements: acknowledged,
+      dateFormatPolicy: dateUndecided ? datePolicy : undefined,
+      decimalConventions: Object.keys(decimalConventions).length
+        ? decimalConventions
+        : undefined,
     });
     if (ok) onNext();
   };
@@ -338,6 +377,121 @@ export function MappingStep({
                   />
                 );
               })}
+            </div>
+          )}
+
+          {/* Human decisions the data cannot make for itself. Each appears
+              only when deterministic validation raised that exact concern, so
+              a clean ISO file shows nothing here. */}
+          {(dateUndecided || decimalColumns.length > 0) && (
+            <div className="mt-5 overflow-hidden rounded-card border border-brand/30 bg-surface shadow-sm">
+              <div className="flex flex-wrap items-center gap-2.5 border-b border-brand/20 bg-brand-soft px-5 py-3">
+                <ShieldCheck size={16} className="shrink-0 text-brand" aria-hidden />
+                <p className="text-[13px] font-semibold text-brand">
+                  These readings are yours to decide
+                </p>
+                <span className="ml-auto font-mono text-[11px] font-semibold text-brand">
+                  {(dateUndecided ? (datePolicy ? 1 : 0) : 0) +
+                    decimalColumns.filter((column) => decimalConventions[column]).length}
+                  /{(dateUndecided ? 1 : 0) + decimalColumns.length}
+                </span>
+              </div>
+
+              <div className="divide-y divide-line">
+                {dateUndecided && (
+                  <div className="px-5 py-4">
+                    <p className="text-[13px] font-semibold">
+                      <span className="font-mono">{dateColumns.join(", ")}</span> reads two ways
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+                      03/04/2026 is 3 April read day first and 4 March read month
+                      first. Nothing is guessed: the reading you approve is the
+                      one executed and the one verified against.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {[
+                        { value: "day_first", label: "Day first", hint: "DD/MM/YYYY" },
+                        { value: "month_first", label: "Month first", hint: "MM/DD/YYYY" },
+                      ].map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setDatePolicy(option.value)}
+                          aria-pressed={datePolicy === option.value}
+                          className={[
+                            "rounded-control border px-3 py-2 text-left transition-colors",
+                            datePolicy === option.value
+                              ? "border-brand bg-brand-soft ring-1 ring-brand/20"
+                              : "border-line bg-surface hover:bg-muted/50",
+                          ].join(" ")}
+                        >
+                          <span className="block text-[13px] font-semibold">
+                            {option.label}
+                          </span>
+                          <span className="block font-mono text-[10px] text-ink-soft">
+                            {option.hint}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {decimalColumns.map((column) => (
+                  <div key={column} className="px-5 py-4">
+                    <p className="text-[13px] font-semibold">
+                      <span className="font-mono">{column}</span> mixes decimal conventions
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+                      The sample contains both 1,250.00 and 1250,00. Choose the
+                      rule to apply; a value that does not match it exactly is
+                      refused rather than converted.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {[
+                        { value: "dot_decimal", label: "Dot decimal", hint: "1,250.00" },
+                        { value: "comma_decimal", label: "Comma decimal", hint: "1250,00" },
+                        {
+                          value: "strict_either",
+                          label: "Either, only when unambiguous",
+                          hint: "per value",
+                        },
+                      ].map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() =>
+                            setDecimalConventions((current) => ({
+                              ...current,
+                              [column]: option.value,
+                            }))
+                          }
+                          aria-pressed={decimalConventions[column] === option.value}
+                          className={[
+                            "rounded-control border px-3 py-2 text-left transition-colors",
+                            decimalConventions[column] === option.value
+                              ? "border-brand bg-brand-soft ring-1 ring-brand/20"
+                              : "border-line bg-surface hover:bg-muted/50",
+                          ].join(" ")}
+                        >
+                          <span className="block text-[13px] font-semibold">
+                            {option.label}
+                          </span>
+                          <span className="block font-mono text-[10px] text-ink-soft">
+                            {option.hint}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="border-t border-line bg-muted/30 px-5 py-3 text-xs leading-relaxed text-ink-soft">
+                Each choice is recorded in the approved plan version and appears
+                in the evidence report. Approval stays blocked until every
+                reading is decided.
+              </p>
             </div>
           )}
 

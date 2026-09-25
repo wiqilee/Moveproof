@@ -11,6 +11,7 @@
 
 import type {
   ApiApprovalResult,
+  ApiDestinationProfile,
   ApiEvidenceQuestion,
   ApiEvidenceRequest,
   ApiExternalEvidence,
@@ -190,7 +191,24 @@ async function requestFile(path: string, timeoutMs = 60_000): Promise<CsvExport>
 export const api = {
   health: () => request<ApiHealth>("/health"),
 
-  destinationSchema: () => request<ApiDestinationSchema>("/api/schema/destination"),
+  /** The destinations this backend offers. */
+  destinationProfiles: () =>
+    request<{ profiles: ApiDestinationProfile[]; default: string }>(
+      "/api/schema/profiles"
+    ),
+
+  /**
+   * The destination schema for one profile.
+   *
+   * Omitting the profile returns the customer schema, so an older caller and
+   * an older backend keep agreeing with each other.
+   */
+  destinationSchema: (profile?: string) =>
+    request<ApiDestinationSchema>(
+      profile
+        ? `/api/schema/destination?profile=${encodeURIComponent(profile)}`
+        : "/api/schema/destination"
+    ),
 
   listMigrations: () =>
     request<{ migrations: ApiMigrationSummary[] }>("/api/migrations"),
@@ -204,6 +222,8 @@ export const api = {
     request<{
       id: string;
       filename: string;
+      /** Null on a migration recorded before profiles existed. */
+      destination_profile?: string | null;
       checksum: string;
       row_count: number;
       columns: string[];
@@ -220,16 +240,21 @@ export const api = {
       latest_run_id: string | null;
     }>(`/api/migrations/${id}`),
 
-  upload: (file: File) => {
+  upload: (file: File, destinationProfile?: string) => {
     const form = new FormData();
     form.append("file", file);
     // Upload gets a longer window than a normal call, because a 25 MB file on
     // a slow connection is not an error.
-    return request<ApiUploadResult>("/api/migrations", {
-      method: "POST",
-      body: form,
-      timeoutMs: 120_000,
-    });
+    return request<ApiUploadResult>(
+      destinationProfile
+        ? `/api/migrations?destination_profile=${encodeURIComponent(destinationProfile)}`
+        : "/api/migrations",
+      {
+        method: "POST",
+        body: form,
+        timeoutMs: 120_000,
+      }
+    );
   },
 
   preview: (id: string, limit = 50) =>
@@ -250,11 +275,20 @@ export const api = {
   approvePlan: (
     id: string,
     body: {
-      profile: "safe" | "legacy";
+      /** Where the proposal came from: safe, legacy or model. */
+      source: "safe" | "legacy" | "model";
       acknowledgements: string[];
+      /**
+       * Binds this approval to one server-generated proposal. Required for a
+       * model-drafted plan, which cannot be reconstructed from a name.
+       */
+      proposal_version?: number;
+      proposal_hash?: string;
       date_format_policy?: string | null;
       required_field_policy?: string | null;
       conflict_policy?: string | null;
+      /** Per column, how an ambiguous decimal is to be read. */
+      decimal_conventions?: Record<string, string>;
     }
   ) =>
     request<ApiApprovalResult>(`/api/migrations/${id}/plan/approve`, {

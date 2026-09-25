@@ -28,7 +28,7 @@ from app.db.connection import connect  # noqa: E402
 from app.domain.contract import CUSTOMERS_CONTRACT_V1  # noqa: E402
 from app.domain.plan import approve, validate_plan  # noqa: E402
 from app.domain.plans import legacy_integer_cast_plan, safe_plan  # noqa: E402
-from app.domain.schema import CUSTOMERS_V1  # noqa: E402
+from app.domain.schema import CUSTOMERS_UNVERIFIED_PROPERTIES, CUSTOMERS_V1  # noqa: E402
 from app.domain.types import (  # noqa: E402
     CheckStatus,
     ConflictPolicy,
@@ -108,7 +108,10 @@ def stage(conn, migration_id, parsed, plan, key="run-1", at="2026-09-09T06:00:00
 
 
 def verify_and_store(conn, migration_id, run_id):
-    outcome = verify_run(conn, migration_id, run_id, CUSTOMERS_V1)
+    outcome = verify_run(conn, migration_id, run_id, CUSTOMERS_V1, key_column="customer_id",
+        unverified_properties=CUSTOMERS_UNVERIFIED_PROPERTIES,
+        date_columns=("signup_date",),
+    )
     repository.save_checks(conn, run_id, outcome.checks)
     repository.mark_verified(conn, run_id)
     return outcome
@@ -144,7 +147,10 @@ def test_verification_reads_back_from_the_database(conn):
     migration_id, parsed = ingest(conn)
     _, run_id = stage(conn, migration_id, parsed, safe_plan())
 
-    outcome = verify_run(conn, migration_id, run_id, CUSTOMERS_V1)
+    outcome = verify_run(conn, migration_id, run_id, CUSTOMERS_V1, key_column="customer_id",
+        unverified_properties=CUSTOMERS_UNVERIFIED_PROPERTIES,
+        date_columns=("signup_date",),
+    )
     repository.save_checks(conn, run_id, outcome.checks)
 
     identifier = next(c for c in outcome.checks if c.check_id == "identifier_preservation")
@@ -159,7 +165,10 @@ def test_integer_cast_failure_survives_the_round_trip(conn):
     migration_id, parsed = ingest(conn)
     _, run_id = stage(conn, migration_id, parsed, legacy_integer_cast_plan())
 
-    outcome = verify_run(conn, migration_id, run_id, CUSTOMERS_V1)
+    outcome = verify_run(conn, migration_id, run_id, CUSTOMERS_V1, key_column="customer_id",
+        unverified_properties=CUSTOMERS_UNVERIFIED_PROPERTIES,
+        date_columns=("signup_date",),
+    )
     identifier = next(c for c in outcome.checks if c.check_id == "identifier_preservation")
 
     assert identifier.status is CheckStatus.FAILED
@@ -267,7 +276,10 @@ def test_repair_rereads_the_stored_source_not_the_damaged_value(conn):
     repaired = repository.load_staged_rows(conn, repaired_run, committable_only=True)
     assert repaired[0]["values"]["customer_id"] == "00127"
 
-    outcome = verify_run(conn, migration_id, repaired_run, CUSTOMERS_V1)
+    outcome = verify_run(conn, migration_id, repaired_run, CUSTOMERS_V1, key_column="customer_id",
+        unverified_properties=CUSTOMERS_UNVERIFIED_PROPERTIES,
+        date_columns=("signup_date",),
+    )
     identifier = next(c for c in outcome.checks if c.check_id == "identifier_preservation")
     assert identifier.status is CheckStatus.PASSED
 
@@ -412,7 +424,10 @@ def test_commit_without_any_stored_checks_is_refused(conn):
 def test_commit_with_a_missing_mandatory_check_is_refused(conn):
     migration_id, parsed = ingest(conn)
     _, run_id = stage(conn, migration_id, parsed, safe_plan())
-    outcome = verify_run(conn, migration_id, run_id, CUSTOMERS_V1)
+    outcome = verify_run(conn, migration_id, run_id, CUSTOMERS_V1, key_column="customer_id",
+        unverified_properties=CUSTOMERS_UNVERIFIED_PROPERTIES,
+        date_columns=("signup_date",),
+    )
     partial = [c for c in outcome.checks if c.check_id != "uniqueness"]
     repository.save_checks(conn, run_id, partial)
     repository.mark_verified(conn, run_id)
@@ -476,7 +491,10 @@ def test_commit_is_refused_under_a_different_contract(conn):
 def test_commit_is_refused_when_verification_was_never_stamped(conn):
     migration_id, parsed = ingest(conn)
     _, run_id = stage(conn, migration_id, parsed, safe_plan())
-    outcome = verify_run(conn, migration_id, run_id, CUSTOMERS_V1)
+    outcome = verify_run(conn, migration_id, run_id, CUSTOMERS_V1, key_column="customer_id",
+        unverified_properties=CUSTOMERS_UNVERIFIED_PROPERTIES,
+        date_columns=("signup_date",),
+    )
     repository.save_checks(conn, run_id, outcome.checks)
     # mark_verified deliberately not called.
 
@@ -535,7 +553,10 @@ def test_transform_rejections_survive_the_round_trip(conn):
     assert len(stored) == 1
     assert "not a real calendar date" in stored[0].reason
 
-    outcome = verify_run(conn, migration_id, run_id, CUSTOMERS_V1)
+    outcome = verify_run(conn, migration_id, run_id, CUSTOMERS_V1, key_column="customer_id",
+        unverified_properties=CUSTOMERS_UNVERIFIED_PROPERTIES,
+        date_columns=("signup_date",),
+    )
     assert outcome.transform_errors == 1
     rejection = next(c for c in outcome.checks if c.check_id == "transform_rejections")
     assert rejection.status is CheckStatus.REVIEW
@@ -548,7 +569,10 @@ def test_applied_operations_are_read_back(conn):
     run = repository.load_run(conn, run_id)
     assert any("deduplicate" in op for op in run["applied_operations"])
 
-    outcome = verify_run(conn, migration_id, run_id, CUSTOMERS_V1)
+    outcome = verify_run(conn, migration_id, run_id, CUSTOMERS_V1, key_column="customer_id",
+        unverified_properties=CUSTOMERS_UNVERIFIED_PROPERTIES,
+        date_columns=("signup_date",),
+    )
     assert outcome.plan_version == "v1"
 
 

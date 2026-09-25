@@ -16,7 +16,6 @@ from dataclasses import dataclass
 import psycopg
 
 from app.db import repository
-from app.domain.schema import UNVERIFIED_PROPERTIES
 from app.domain.types import (
     Check,
     DestinationSchema,
@@ -43,10 +42,34 @@ def verify_run(
     migration_id: uuid.UUID,
     run_id: uuid.UUID,
     schema: DestinationSchema,
-    key_column: str = "customer_id",
-    date_columns: tuple[str, ...] = ("signup_date",),
+    # No default. A shared verifier that silently assumes the customer key
+    # would check a column the robotics destination does not have, and report
+    # a pass for a property it never examined. The caller names it.
+    key_column: str,
+    # Required, like key_column. A shared verifier holding a customer default
+    # would report customer limitations on a robotics report.
+    unverified_properties: tuple[tuple[str, str, str], ...],
+    # The customer default is dropped here too: a date column named for one
+    # destination is wrong for the other.
+    date_columns: tuple[str, ...] = (),
     reconciliation_fields: tuple[str, ...] = (),
+    identity_columns: tuple[str, ...] = (),
+    #: Read from the approved plan by the caller, never from a request.
+    date_format_policy: str | None = None,
+    decimal_conventions: dict[str, str] | None = None,
 ) -> DatabaseVerification:
+    """Verify one run against the destination it was staged for.
+
+    `key_column` is the identifier whose exact form must survive, which for
+    robotics is robot_id and is not on its own unique. `identity_columns` is
+    what makes a row distinct in the destination, which for robotics is
+    (robot_id, joint_name). Conflating the two would report three joints of
+    the same robot as duplicates.
+
+    The defaults describe the customer destination, so a caller that predates
+    profiles keeps its behaviour. Every caller in the product passes the
+    destination profile's own values.
+    """
     source_rows: list[SourceRow] = repository.load_source_rows(conn, migration_id)
     staged_records = repository.load_staged_rows(conn, run_id)
 
@@ -101,8 +124,11 @@ def verify_run(
         key_column=key_column,
         destination_key_column=key_column,
         date_columns=date_columns,
-        unverified_properties=UNVERIFIED_PROPERTIES,
+        unverified_properties=unverified_properties,
         reconciliation_fields=reconciliation_fields,
+        identity_columns=identity_columns,
+        date_format_policy=date_format_policy,
+        decimal_conventions=decimal_conventions,
     )
     return DatabaseVerification(
         checks=checks,

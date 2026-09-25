@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, DragEvent, ReactNode } from "react";
 import {
   ArrowRight,
+  Bot,
   CheckCircle2,
   FileSpreadsheet,
   KeyRound,
@@ -11,12 +12,17 @@ import {
   Lock,
   ShieldCheck,
   Upload,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Stepper } from "@/components/ui/Stepper";
 import { WizardActions } from "./WizardActions";
 import { api } from "@/data/api";
-import type { ApiDestinationSchema, ApiPreview } from "@/lib/api-types";
+import type {
+  ApiDestinationProfile,
+  ApiDestinationSchema,
+  ApiPreview,
+} from "@/lib/api-types";
 import { useMigration } from "@/lib/migration-store";
 
 export const WIZARD_STEPS = ["Source", "Destination", "Mapping", "Review"];
@@ -71,8 +77,107 @@ function TrustNote({ icon: Icon, children }: { icon: typeof Lock; children: Reac
   );
 }
 
+/**
+ * Which destination this migration targets.
+ *
+ * Chosen before upload, because the backend records the profile on the
+ * migration row and every later stage resolves its contract from there.
+ * Changing it afterwards would mean verifying against a different contract
+ * than the rows were staged for, so the choice locks once a file has landed.
+ */
+function ProfilePicker({
+  profiles,
+  selected,
+  onSelect,
+  locked,
+}: {
+  profiles: ApiDestinationProfile[];
+  selected: string | null;
+  onSelect: (id: string) => void;
+  locked: boolean;
+}) {
+  // One destination is not a choice, so nothing is shown. An older backend
+  // without the profiles endpoint lands here too.
+  if (profiles.length < 2) return null;
+
+  return (
+    <fieldset className="mb-6" disabled={locked}>
+      <legend className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-soft">
+        Destination
+      </legend>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {profiles.map((profile) => {
+          const active = selected === profile.id;
+          const Icon = profile.id.startsWith("robot") ? Bot : Users;
+          return (
+            <button
+              key={profile.id}
+              type="button"
+              onClick={() => onSelect(profile.id)}
+              aria-pressed={active}
+              className={[
+                "rounded-card border p-4 text-left",
+                "transition-[border-color,background-color,box-shadow] duration-200",
+                active
+                  ? "border-brand bg-brand-soft shadow-sm ring-1 ring-brand/20"
+                  : "border-line bg-surface hover:border-brand/40 hover:bg-muted/50",
+                locked ? "cursor-not-allowed opacity-60" : "",
+              ].join(" ")}
+            >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span
+                  className={[
+                    "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
+                    active ? "bg-brand text-on-brand" : "bg-muted text-ink-soft",
+                  ].join(" ")}
+                  aria-hidden
+                >
+                  <Icon size={16} />
+                </span>
+                {active && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-brand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-on-brand">
+                    <CheckCircle2 size={10} strokeWidth={3} aria-hidden />
+                    Selected
+                  </span>
+                )}
+              </div>
+              <p className="text-[13px] font-semibold tracking-[-0.01em]">
+                {profile.display_name}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+                {profile.description}
+              </p>
+              <p className="mt-2 font-mono text-[10px] text-ink-soft/80">
+                {profile.destination_table} · {profile.column_count} columns
+              </p>
+            </button>
+          );
+        })}
+      </div>
+      {locked && (
+        <p className="mt-2.5 text-xs text-ink-soft">
+          The destination is fixed once a file is uploaded. Cancel and start again
+          to migrate into a different one.
+        </p>
+      )}
+    </fieldset>
+  );
+}
+
 export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel: () => void }) {
-  const { migrationId, filename, uploadFile, busy } = useMigration();
+  const {
+    migrationId,
+    filename,
+    uploadFile,
+    busy,
+    destinationProfile,
+    setDestinationProfile,
+  } = useMigration();
+  const [profiles, setProfiles] = useState<ApiDestinationProfile[]>([]);
+  // Until this settles, the destination on screen is not yet the destination
+  // an upload would record. Uploading before then is how an operator ends up
+  // with robotics selected and a customer migration created.
+  const [profilesReady, setProfilesReady] = useState(false);
   const [preview, setPreview] = useState<ApiPreview | null>(null);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -96,9 +201,37 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
     };
   }, [migrationId]);
 
+  useEffect(() => {
+    let active = true;
+    api
+      .destinationProfiles()
+      .then((result) => {
+        if (!active) return;
+        setProfiles(result.profiles);
+        // The backend names its own default, so the browser never has to.
+        if (!destinationProfile) setDestinationProfile(result.default);
+      })
+      .catch(() => {
+        // An older backend has no profiles endpoint. Customers is then the
+        // only destination, and omitting the parameter selects it.
+        if (active) setProfiles([]);
+      })
+      .finally(() => {
+        if (active) setProfilesReady(true);
+      });
+    return () => {
+      active = false;
+    };
+    // The store setters are stable; this runs once per step mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const accept = async (file: File | undefined) => {
     if (!file) return;
-    await uploadFile(file);
+    // Refuse rather than upload against a destination that may still change
+    // under the operator a moment later.
+    if (!profilesReady) return;
+    await uploadFile(file, destinationProfile ?? undefined);
   };
 
   const onDrop = (event: DragEvent<HTMLDivElement>): void => {
@@ -121,6 +254,13 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
       {/* The dropzone is the only thing on screen until a file lands, so it
           carries the weight: a layered surface, a real target area, and the
           formats stated where they are needed rather than in a footnote. */}
+      <ProfilePicker
+        profiles={profiles}
+        selected={destinationProfile}
+        onSelect={setDestinationProfile}
+        locked={migrationId !== null}
+      />
+
       <div
         onDragOver={(event: DragEvent<HTMLDivElement>) => {
           event.preventDefault();
@@ -171,9 +311,13 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
           variant="secondary"
           className="mt-5"
           onClick={() => inputRef.current?.click()}
-          disabled={busy !== null}
+          disabled={busy !== null || !profilesReady}
         >
-          {uploading ? "Uploading" : "Choose a file"}
+          {!profilesReady
+            ? "Loading destinations"
+            : uploading
+              ? "Uploading"
+              : "Choose a file"}
         </Button>
 
         <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-t border-line pt-5">
@@ -291,12 +435,16 @@ export function DestinationStep({
   onBack: () => void;
   backLabel: string;
 }) {
+  const { destinationProfile } = useMigration();
   const [schema, setSchema] = useState<ApiDestinationSchema | null>(null);
 
   useEffect(() => {
     let active = true;
+    setSchema(null);
     api
-      .destinationSchema()
+      // The real schema for the chosen destination, from the backend registry.
+      // Nothing here is constructed in the browser.
+      .destinationSchema(destinationProfile ?? undefined)
       .then((result) => {
         if (active) setSchema(result);
       })
@@ -306,7 +454,7 @@ export function DestinationStep({
     return () => {
       active = false;
     };
-  }, []);
+  }, [destinationProfile]);
 
   const required = schema?.columns.filter((column) => column.required).length ?? 0;
 

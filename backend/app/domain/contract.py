@@ -104,3 +104,31 @@ CUSTOMERS_CONTRACT_V1 = VerificationContract(
         "Referential integrity with related tables. This migration targets a single table.",
     ),
 )
+
+
+ROBOT_CALIBRATION_CONTRACT_V1 = VerificationContract(
+    version="vc-r1",
+    destination_schema="public.robot_calibrations",
+    destination_schema_version="v1",
+    key_column="robot_id",
+    date_columns=("calibration_date",),
+    # Identity preserving columns only, exactly as on the customer contract.
+    # robot_id and firmware_version are text that must arrive unchanged:
+    # 0017 is not 17, and 3.08 is a version string rather than a number.
+    # zero_offset_deg and gear_ratio are cast, so they are checked by the
+    # decimal rule rather than compared against the text they came from.
+    reconciliation_fields=(
+        "robot_id",
+        "joint_name",
+        "firmware_version",
+        "sensor_frame",
+    ),
+    exclusions=(
+        "Aggregate reconciliation against a calibration ledger. No ledger is configured.",
+        "Referential integrity with a robot registry. This migration targets a single table.",
+        (
+            "Physical validity of a calibration. MoveProof verifies that recorded "
+            "values survived the migration and makes no claim about robot safety."
+        ),
+    ),
+)

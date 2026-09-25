@@ -12,6 +12,8 @@ result.
 
 from __future__ import annotations
 
+import re
+
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -42,6 +44,7 @@ def execute_plan(
     schema: DestinationSchema,
     rows: list[SourceRow],
     source_columns: tuple[str, ...],
+    identity_columns: tuple[str, ...] = (),
 ) -> ExecutionResult:
     if not plan.is_approved:
         raise ExecutionRefused(
@@ -77,6 +80,15 @@ def execute_plan(
     applied: list[str] = []
     staged: list[StagedRow] = []
 
+    # What makes a row distinct in the destination. For customers that is the
+    # identifier alone; for robotics it is (robot_id, joint_name), because one
+    # robot has a calibration per joint. Grouping by the identifier alone would
+    # report those joints as conflicting rows.
+    identity = identity_columns or (plan.key_column,)
+
+    def row_identity(source_row: SourceRow) -> str:
+        return "\u001f".join(source_row.get(column) for column in identity)
+
     key_mapping = plan.mapping_for(plan.key_column)
     if key_mapping is None:
         raise ExecutionRefused(
@@ -94,9 +106,8 @@ def execute_plan(
     conflict_rows: set[int] = set()
 
     for row in rows:
-        raw_key = row.get(plan.key_column)
         fingerprint = row.fingerprint(source_columns)
-        key_to_fingerprints.setdefault(raw_key, set()).add(fingerprint)
+        key_to_fingerprints.setdefault(row_identity(row), set()).add(fingerprint)
 
         if fingerprint in seen_fingerprints:
             if plan.duplicate_policy is DuplicatePolicy.KEEP_FIRST_EXACT:
@@ -141,7 +152,7 @@ def execute_plan(
 
             raw = row.get(mapping.source_column)
             try:
-                values[mapping.destination_column] = _apply(mapping, raw, plan)
+                values[mapping.destination_column] = _apply(mapping, raw, plan, schema)
             except _TransformFailure as failure:
                 row_errors.append(
                     TransformError(
@@ -161,7 +172,7 @@ def execute_plan(
             accounting.rejected += 1
             disposition = RowDisposition.REJECTED
             reason = row_errors[0].reason
-        elif raw_key in conflicting_keys:
+        elif row_identity(row) in conflicting_keys:
             conflict_rows.add(row.row_number)
             accounting.conflicts_unresolved += 1
             disposition = RowDisposition.CONFLICT_UNRESOLVED
@@ -214,7 +225,61 @@ class _TransformFailure(Exception):
     """A value the approved operation cannot produce. Never guessed around."""
 
 
-def _apply(mapping: Mapping, raw: str, plan: MigrationPlan) -> object:
+#: Values whose decimal separator is unambiguous on their own.
+_DOT_DECIMAL = re.compile(r"^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)\.\d+$")
+_COMMA_DECIMAL = re.compile(r"^[+-]?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{1,2}$")
+_PLAIN = re.compile(r"^[+-]?\d+$")
+
+
+def _decimal_under(text: str, convention: str | None) -> Decimal:
+    """Read a decimal under the convention a human approved.
+
+    With no convention the value must already be in a form Decimal accepts,
+    which is the behaviour every existing plan has. `1,250.00` and `1250,00`
+    are refused there, and correctly so: guessing between them is exactly the
+    silent damage this product exists to prevent.
+
+    An approved convention narrows what is accepted rather than widening it:
+
+        dot_decimal    1,250.00 and 1200.50, comma is a thousands separator
+        comma_decimal  1250,00 and 1.250,00, dot is a thousands separator
+        strict_either  either of the two forms above, but only when the value
+                       matches one of them exactly and unambiguously
+
+    Anything outside the chosen pattern still fails closed. A bare integer is
+    accepted under every convention because it reads the same way in all of
+    them.
+    """
+    if convention is None:
+        return Decimal(text)
+
+    if _PLAIN.match(text):
+        return Decimal(text)
+
+    dot = bool(_DOT_DECIMAL.match(text))
+    comma = bool(_COMMA_DECIMAL.match(text))
+
+    if convention == "dot_decimal" and dot:
+        return Decimal(text.replace(",", ""))
+    if convention == "comma_decimal" and comma:
+        return Decimal(text.replace(".", "").replace(",", "."))
+    if convention == "strict_either":
+        # Each form is individually unambiguous; only a value matching exactly
+        # one of them is read, so nothing is inferred from context.
+        if dot and not comma:
+            return Decimal(text.replace(",", ""))
+        if comma and not dot:
+            return Decimal(text.replace(".", "").replace(",", "."))
+
+    raise _TransformFailure(
+        f"{text!r} does not match the approved {convention} reading, so it was "
+        "not converted. Nothing is guessed."
+    )
+
+
+def _apply(
+    mapping: Mapping, raw: str, plan: MigrationPlan, schema: DestinationSchema
+) -> object:
     operation = mapping.operation
 
     if operation in (
@@ -244,13 +309,29 @@ def _apply(mapping: Mapping, raw: str, plan: MigrationPlan) -> object:
     if operation is Operation.CAST_TO_DECIMAL:
         if raw.strip() == "":
             return None
+        convention = mapping.options.get("decimal_convention")
         try:
-            value = Decimal(raw.strip())
+            value = _decimal_under(raw.strip(), convention)
         except InvalidOperation:
             raise _TransformFailure(
                 f"{raw!r} is not a decimal number."
             ) from None
-        scale = int(mapping.options.get("scale", 2))
+        # The destination column decides the scale, not a constant. A customer
+        # balance is NUMERIC(12,2) and a robot gear ratio NUMERIC(12,4); the
+        # same cast must respect whichever it is writing into. An explicit
+        # option on the mapping still wins, because an approved plan may
+        # deliberately narrow it.
+        destination = (
+            schema.column(mapping.destination_column)
+            if mapping.destination_column is not None
+            else None
+        )
+        default_scale = (
+            destination.numeric_scale
+            if destination is not None and destination.numeric_scale is not None
+            else 2
+        )
+        scale = int(mapping.options.get("scale", default_scale))
         if -value.as_tuple().exponent > scale:  # type: ignore[operator]
             allow = bool(mapping.options.get("allow_rounding", False))
             if not allow:
