@@ -112,8 +112,10 @@ table,
 
 html {
   scroll-behavior: smooth;
-  /* Anchored sections clear the sticky navigation bar. */
-  scroll-padding-top: 4.5rem;
+  /* Anchored sections clear the floating navigation bar, which is 56px tall
+     and sits 12 to 16px below the top. 4.5rem left a heading flush against
+     its underside; this leaves a little air. */
+  scroll-padding-top: 5.75rem;
 }
 
 @keyframes spin {

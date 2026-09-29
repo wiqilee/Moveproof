@@ -329,7 +329,7 @@ export function Technology() {
   return (
     <section id="technology" className="border-b border-line">
       <div className="mx-auto max-w-6xl px-5 py-20 sm:px-6">
-        <div className="grid gap-12 lg:grid-cols-[minmax(0,4fr)_minmax(0,5fr)] lg:gap-16">
+        <div className="grid items-start gap-12 lg:grid-cols-[minmax(0,45fr)_minmax(0,55fr)] lg:gap-14">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
               Technology
@@ -339,19 +339,19 @@ export function Technology() {
             <br />
               Validated code executes.
             </h2>
-            <p className="mt-5 max-w-md text-[15px] leading-relaxed text-ink-soft">
+            <p className="mt-6 max-w-[560px] text-[15px] leading-relaxed text-ink-soft">
               The architecture treats model output as untrusted input. Destination profiles are
               resolved through a server-side registry, proposals are validated against an allowlist
               of supported operations, execution follows the exact approved contract in isolated
               staging, and an independent verifier checks the result before commit is allowed.
             </p>
-            <p className="mt-4 max-w-md text-[15px] leading-relaxed text-ink-soft">
+            <p className="mt-5 max-w-[560px] text-[15px] leading-relaxed text-ink-soft">
   Model-assisted reasoning runs through Nebius Token Factory. Nemotron 3 Super
   handles the initial planning pass, while deterministic validation can selectively
   escalate harder cases to Nemotron 3 Ultra. Both passes use the same bounded context:
   a schema summary and a small sample of rows. Full datasets are never sent to either model.
 </p>
-            <p className="mt-4 max-w-md text-[15px] leading-relaxed text-ink-soft">
+            <p className="mt-5 max-w-[560px] text-[15px] leading-relaxed text-ink-soft">
               The same deterministic execution and independent verification path serves
               <span className="font-mono text-[13px]"> customers_v1</span> and
               <span className="font-mono text-[13px]"> robot_calibration_v1</span>. The robotics
@@ -360,7 +360,10 @@ export function Technology() {
             </p>
           </div>
 
-          <div className="space-y-4">
+          {/* One independent stack. The right column renders its own panels
+              in sequence rather than waiting for the taller left column to
+              finish, which is what left a blank area beside the copy. */}
+          <div className="space-y-5">
             {/* The authority path, drawn as a spine. Tavily hangs off it to one
                 side, because advisory context never decides anything. */}
             <div className="panel p-5">
@@ -420,19 +423,9 @@ export function Technology() {
             </div>
 
 
-          </div>
-        </div>
-
-        {/* The build list spans the section. Infrastructure went back beside
-            the authority path, where it fills the space the long narrative
-            would otherwise leave empty on the right. */}
-        {/* Two rows, each balanced: narrative beside the authority path
-            above, then Infrastructure beside the build list here. A single
-            full-width panel under a two-column section reads as stranded. */}
-        <div className="mt-12 grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-            <div className="panel p-5">
+            <div className="panel px-5 py-4">
               <p className="eyebrow">Infrastructure</p>
-              <ul className="mt-3 flex flex-wrap gap-1.5">
+              <ul className="mt-2.5 flex flex-wrap gap-1.5">
                 {[
                   "Next.js / Vercel",
                   "FastAPI",
@@ -444,7 +437,7 @@ export function Technology() {
                 ].map((item) => (
                   <li
                     key={item}
-                    className="rounded-full border border-line px-2.5 py-1 font-mono text-[11px] text-ink-soft"
+                    className="rounded-full border border-line px-2 py-0.5 font-mono text-[11px] text-ink-soft"
                   >
                     {item}
                   </li>
@@ -453,9 +446,9 @@ export function Technology() {
             </div>
 
 
-            <div className="panel self-start p-6">
+            <div className="panel p-5">
             <h3 className="text-sm font-semibold">What is running in this build</h3>
-            <ul className="mt-4 space-y-2.5">
+            <ul className="mt-4 grid gap-2.5 xl:grid-cols-2 xl:gap-x-6">
               {live.map((item) => (
                 <li key={item.label} className="flex items-start gap-2.5 text-sm">
                   <Check size={15} className="mt-0.5 shrink-0 text-ok" aria-hidden />
@@ -483,7 +476,12 @@ export function Technology() {
               endorses this project.
             </p>
             </div>
+          </div>
         </div>
+
+        {/* The build list spans the section. Infrastructure went back beside
+            the authority path, where it fills the space the long narrative
+            would otherwise leave empty on the right. */}
       </div>
     </section>
   );
