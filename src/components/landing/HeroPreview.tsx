@@ -78,7 +78,7 @@ export function HeroPreview() {
   const style = outcomeStyles[field.outcome];
 
   return (
-    <div className="overflow-hidden rounded-card border border-line bg-surface shadow-lift">
+    <div className="panel overflow-hidden shadow-lift">
       <div className="flex items-center justify-between gap-3 border-b border-line bg-muted/60 px-4 py-2.5">
         <p className="font-mono text-[11px] text-ink-soft">customers_v1 · MOV-2026-0091 · plan v1 · run 1</p>
         <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-soft">
@@ -122,40 +122,87 @@ export function HeroPreview() {
             {style.label}
           </p>
 
-          <div className="mt-3 grid grid-cols-2 items-start gap-3">
-            <div className="min-w-0 rounded-lg bg-muted px-3 py-2.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-soft">Source</p>
-              <p className="mt-1 break-words font-mono text-base font-semibold leading-snug">
-                {field.source}
-              </p>
-            </div>
-            <div
-              className={[
-                "min-w-0 rounded-lg px-3 py-2.5",
-                field.outcome === "failed" ? "bg-bad-soft" : field.outcome === "review" ? "bg-warn-soft" : "bg-ok-soft",
-              ].join(" ")}
-            >
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-soft">Destination</p>
-              <p
-                className={`mt-1 break-words font-mono text-base font-semibold leading-snug ${
-                  field.outcome === "passed" ? "" : style.text
-                }`}
-              >
-                {field.destination}
-              </p>
-            </div>
-          </div>
+          {/* Four stations, so the value's journey is legible rather than a
+              before and after pair. The rail between them is the same device
+              the workflow pipeline uses elsewhere on the page. */}
+          <ol className="mt-4">
+            {[
+              {
+                label: "Source",
+                value: field.source,
+                body: null,
+                tone: "bg-muted",
+              },
+              {
+                label: "Approved transformation",
+                value: field.transformation,
+                body: null,
+                tone: "bg-brand-soft/60",
+                mono: false,
+              },
+              {
+                label: "Staged",
+                value: field.destination,
+                body: null,
+                tone:
+                  field.outcome === "failed"
+                    ? "bg-bad-soft"
+                    : field.outcome === "review"
+                      ? "bg-warn-soft"
+                      : "bg-ok-soft",
+              },
+              {
+                label: "Independent verification",
+                value: style.label,
+                body: field.invariant,
+                tone:
+                  field.outcome === "failed"
+                    ? "bg-bad-soft"
+                    : field.outcome === "review"
+                      ? "bg-warn-soft"
+                      : "bg-ok-soft",
+                mono: false,
+              },
+            ].map((station, index, all) => (
+              <li key={station.label} className="relative flex gap-3 pb-3 last:pb-0">
+                {index < all.length - 1 && (
+                  <span className="absolute left-[5px] top-3 h-full w-px bg-line" aria-hidden />
+                )}
+                <span
+                  className={[
+                    "relative mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full border-2 bg-surface",
+                    index === all.length - 1 ? "border-current" : "border-line",
+                    index === all.length - 1 ? style.text : "",
+                  ].join(" ")}
+                  aria-hidden
+                />
+                <span className={`min-w-0 flex-1 rounded-lg px-3 py-2 ${station.tone}`}>
+                  <span className="block text-[10px] font-semibold uppercase tracking-wider text-ink-soft">
+                    {station.label}
+                  </span>
+                  <span
+                    className={[
+                      "mt-0.5 block break-words text-[15px] font-semibold leading-snug",
+                      station.mono === false ? "" : "font-mono",
+                      index === all.length - 1 ? style.text : "",
+                      index === 2 && field.outcome !== "passed" ? style.text : "",
+                    ].join(" ")}
+                  >
+                    {station.value}
+                  </span>
+                  {station.body && (
+                    <span className="mt-1 block text-[12px] leading-relaxed text-ink-soft">
+                      {station.body}
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ol>
 
-          <dl className="mt-4 space-y-2 border-t border-line pt-3.5">
-            <div>
-              <dt className="text-[10px] font-semibold uppercase tracking-wider text-ink-soft">Invariant checked</dt>
-              <dd className="mt-0.5 text-[13px] leading-relaxed">{field.invariant}</dd>
-            </div>
-            <div>
-              <dt className="sr-only">Explanation</dt>
-              <dd className="text-[12px] leading-relaxed text-ink-soft">{field.note}</dd>
-            </div>
-          </dl>
+          <p className="mt-3 border-t border-line pt-3 text-[12px] leading-relaxed text-ink-soft">
+            {field.note}
+          </p>
         </div>
       </div>
     </div>

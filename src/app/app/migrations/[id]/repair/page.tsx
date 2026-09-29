@@ -26,17 +26,26 @@ export default function RepairPage() {
     selectMigration,
   } = useMigration();
 
-  const loaded = useRef(false);
+  // Two-phase hydration, for the same reason as the report page: the callback
+  // captured before selectMigration() resolves still belongs to the previous
+  // migration, or to none at all on a direct link.
+  const selecting = useRef<string | null>(null);
+  const proposalLoadedFor = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!loaded.current) {
-      loaded.current = true;
-      const boot = async () => {
-        if (activeId !== migrationId) await selectMigration(migrationId);
-        await loadRepairProposal();
-      };
-      void boot();
-    }
-  }, [activeId, migrationId, selectMigration, loadRepairProposal]);
+    if (activeId === migrationId) return;
+    if (selecting.current === migrationId) return;
+    selecting.current = migrationId;
+    void selectMigration(migrationId);
+  }, [activeId, migrationId, selectMigration]);
+
+  useEffect(() => {
+    if (activeId !== migrationId) return;
+    if (proposalLoadedFor.current === migrationId) return;
+    proposalLoadedFor.current = migrationId;
+    // No automatic retry on failure; the ref stays set.
+    void loadRepairProposal();
+  }, [activeId, migrationId, loadRepairProposal]);
 
   const approveAndRerun = async () => {
     const approved = await approvePlan({ source: "safe", acknowledgements: [] });

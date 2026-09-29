@@ -162,3 +162,92 @@ body[data-scroll-locked="true"] {
     padding: 0 !important;
   }
 }
+
+/*
+ * Elevation and structure.
+ *
+ * Depth is carried by layered surfaces and hairline borders rather than heavy
+ * shadows. Three levels is the whole vocabulary: the canvas, a raised surface,
+ * and one floating layer. More than that and a page stops reading as a single
+ * intentional product.
+ */
+:root {
+  --elev-1: 0 1px 2px 0 rgb(var(--shadow-rgb) / 0.05);
+  --elev-2: 0 1px 3px 0 rgb(var(--shadow-rgb) / 0.07),
+            0 8px 24px -12px rgb(var(--shadow-rgb) / 0.18);
+  --elev-3: 0 24px 56px -28px rgb(var(--shadow-rgb) / 0.35);
+  --rule: 1px solid rgb(var(--color-line));
+}
+
+.dark {
+  /* On a dark canvas a shadow reads as nothing. Depth comes from a lighter
+     surface and a brighter hairline instead. */
+  --elev-1: 0 1px 0 0 rgb(255 255 255 / 0.04) inset;
+  --elev-2: 0 1px 0 0 rgb(255 255 255 / 0.05) inset,
+            0 16px 40px -24px rgb(0 0 0 / 0.8);
+  --elev-3: 0 32px 64px -28px rgb(0 0 0 / 0.9);
+}
+
+/* A raised panel. The workhorse of every screen. */
+.panel {
+  background: rgb(var(--color-surface));
+  border: var(--rule);
+  border-radius: 12px;
+  box-shadow: var(--elev-2);
+}
+
+/* A quieter panel for secondary content. */
+.panel-flat {
+  background: rgb(var(--color-surface));
+  border: var(--rule);
+  border-radius: 12px;
+  box-shadow: var(--elev-1);
+}
+
+/* Section eyebrows: the same small label everywhere. */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgb(var(--color-ink-soft));
+}
+
+/*
+ * Measurement grid.
+ *
+ * A faint engineering grid behind a section, which suits a product about
+ * checking values. Kept under 4% opacity so it never competes with text.
+ */
+.grid-surface {
+  background-image:
+    linear-gradient(to right, rgb(var(--color-ink) / 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(var(--color-ink) / 0.035) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* A hairline that fades at both ends, for section boundaries. */
+.rule-fade {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgb(var(--color-line)),
+    transparent
+  );
+}
+
+/* Hover elevation, used only where a card is actually actionable. */
+.lift {
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+.lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--elev-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lift:hover {
+    transform: none;
+  }
+}

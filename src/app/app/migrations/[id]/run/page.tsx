@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { CheckCircle2, Circle, Loader2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, Circle, FileWarning, Loader2 } from "lucide-react";
 import { TopBar } from "@/components/workspace/TopBar";
 import { PageHeading } from "@/components/workspace/PageHeading";
 import { Button } from "@/components/ui/Button";
@@ -17,9 +17,11 @@ export default function RunPage() {
   const {
     runResult,
     runId,
+    verification,
     planVersion,
     busy,
     error,
+    runPhase,
     migrationId: activeId,
     selectMigration,
     runVerification,
@@ -34,12 +36,41 @@ export default function RunPage() {
     }
   }, [activeId, migrationId, selectMigration]);
 
+  // Execution, specifically. `busy` is set by every store operation including
+  // "Loading migration", and showing that as staging told the operator the
+  // executor was running when nothing was. The store's own run phase is the
+  // only truthful source.
+  //
+  // There is no progress figure anywhere here on purpose: the backend reports
+  // no percentage, and inventing one would be the reassuring fiction this
+  // product exists to avoid.
+  const staging = runPhase === "running";
+
   const stages = [
-    { label: "Upload validated and stored", done: true },
-    { label: `Plan ${planVersion ? `v${planVersion}` : ""} approved`, done: Boolean(planVersion) },
-    { label: "Original bytes reparsed", done: Boolean(runResult) },
-    { label: "Transformation staged", done: Boolean(runResult) },
-    { label: "Verification", done: hasResults },
+    {
+      label: `Plan ${planVersion ? `v${planVersion} ` : ""}approved`,
+      detail: "The exact version the executor runs",
+      done: Boolean(planVersion),
+      active: false,
+    },
+    {
+      label: "Executing",
+      detail: "Original uploaded bytes reparsed, never an earlier staged run",
+      done: Boolean(runResult),
+      active: staging,
+    },
+    {
+      label: "Staged",
+      detail: "Rows written to an isolated staging schema, destination untouched",
+      done: Boolean(runResult),
+      active: false,
+    },
+    {
+      label: "Ready for verification",
+      detail: "An independent verifier reads the staged rows back",
+      done: hasResults,
+      active: Boolean(runResult) && !hasResults,
+    },
   ];
 
   const verifyNow = async () => {
@@ -58,7 +89,56 @@ export default function RunPage() {
           back={{ href: routes.workspace, label: "Back to overview" }}
         />
 
-        {!runResult && !busy && !error ? (
+        {!runResult && runId && !busy ? (
+          /* A run exists on the backend, but GET /api/migrations/{id} does not
+             return the original row accounting, and no endpoint reconstructs
+             it. Saying "never staged" would contradict the record; inventing
+             figures would be worse. So the page states exactly what is known. */
+          <div className="overflow-hidden rounded-card border border-line bg-surface shadow-sm">
+            <div className="flex flex-wrap items-center gap-2 border-b border-line bg-muted/40 px-5 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
+                Previously staged
+              </p>
+              <span className="ml-auto rounded-full bg-ok-soft px-2.5 py-1 text-[11px] font-semibold text-ok">
+                {verification ? "Staged and verified" : "Staged"}
+              </span>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-[13px] leading-relaxed text-ink-soft">
+                This migration was staged in run{" "}
+                <span className="font-mono">{runId.slice(0, 8)}</span>
+                {planVersion ? ` under approved plan v${planVersion}` : ""}.
+                {verification
+                  ? " Its verification results are stored and can be opened below."
+                  : " Verification has not been run against it yet."}
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-soft">
+                Row accounting from that run is not available after reopening:
+                the API returns the stored checks, not the original execution
+                figures. The evidence report holds the authoritative record.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {verification && (
+                  <Button
+                    icon={ArrowRight}
+                    iconPosition="right"
+                    onClick={() => router.push(routes.verification(migrationId))}
+                  >
+                    Open verification results
+                  </Button>
+                )}
+                {!verification && (
+                  <Button
+                    onClick={() => void verifyNow()}
+                    disabled={busy !== null}
+                  >
+                    {busy ?? "Run verification"}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : !runResult && !busy && !error ? (
           <EmptyState
             title="This run has not been staged yet"
             body="Approve a plan and stage it from the migration wizard."
@@ -66,19 +146,52 @@ export default function RunPage() {
           />
         ) : (
           <>
-            <div className="rounded-card border border-line bg-surface p-5">
-              <ol>
+            <div className="overflow-hidden rounded-card border border-line bg-surface shadow-sm">
+              <div className="flex flex-wrap items-center gap-2 border-b border-line bg-muted/40 px-5 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
+                  Lifecycle
+                </p>
+                <span
+                  className={[
+                    "ml-auto rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                    staging
+                      ? "bg-brand-soft text-brand"
+                      : runResult
+                        ? "bg-ok-soft text-ok"
+                        : "bg-muted text-ink-soft",
+                  ].join(" ")}
+                >
+                  {staging ? "Staging in progress" : runResult ? "Staging complete" : "Not staged"}
+                </span>
+              </div>
+              <ol className="divide-y divide-line">
                 {stages.map((stage) => (
-                  <li key={stage.label} className="flex items-center gap-2.5 py-2">
+                  <li
+                    key={stage.label}
+                    className={`flex items-start gap-3 px-5 py-3.5 ${
+                      stage.active ? "bg-brand-soft/40" : ""
+                    }`}
+                  >
                     {stage.done ? (
-                      <CheckCircle2 size={16} className="text-ok" aria-hidden />
-                    ) : busy ? (
-                      <Loader2 size={16} className="spin text-brand" aria-hidden />
+                      <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-ok" aria-hidden />
+                    ) : stage.active ? (
+                      <Loader2 size={17} className="spin mt-0.5 shrink-0 text-brand" aria-hidden />
                     ) : (
-                      <Circle size={16} className="text-line" aria-hidden />
+                      <Circle size={17} className="mt-0.5 shrink-0 text-line" aria-hidden />
                     )}
-                    <span className={stage.done ? "text-sm" : "text-sm text-ink-soft"}>
-                      {stage.label}
+                    <span className="min-w-0">
+                      <span
+                        className={`block text-[13px] ${
+                          stage.done || stage.active
+                            ? "font-semibold"
+                            : "text-ink-soft"
+                        }`}
+                      >
+                        {stage.label}
+                      </span>
+                      <span className="mt-0.5 block text-xs leading-relaxed text-ink-soft">
+                        {stage.detail}
+                      </span>
                     </span>
                   </li>
                 ))}
@@ -86,26 +199,97 @@ export default function RunPage() {
             </div>
 
             {runResult && (
-              <div className="mt-4 rounded-card border border-line bg-surface p-5">
-                <p className="mb-3 text-xs font-semibold text-ink-soft">Row accounting</p>
-                <p className="font-mono text-sm leading-loose">
-                  {runResult.accounting.arithmetic.map((line) => (
-                    <span key={line} className="block">
-                      {line}
-                    </span>
+              <>
+                {/* The four figures a reviewer actually looks for, before the
+                    arithmetic that explains them. */}
+                <div className="mt-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+                  {[
+                    {
+                      label: "Source rows",
+                      value: runResult.accounting.source_rows,
+                      tone: "text-ink",
+                      hint: "read from the original upload",
+                    },
+                    {
+                      label: "Staged rows",
+                      value: runResult.accounting.staged_rows,
+                      tone: "text-ink",
+                      hint: "written to the staging schema",
+                    },
+                    {
+                      label: "Eligible to commit",
+                      value: runResult.accounting.committable_rows,
+                      tone: "text-ok",
+                      hint: "after policy exclusions",
+                    },
+                    {
+                      label: "Transform errors",
+                      value: runResult.transform_errors,
+                      tone: runResult.transform_errors > 0 ? "text-bad" : "text-ink-soft",
+                      hint: "rows the executor refused",
+                    },
+                  ].map((stat) => (
+                    <div
+                      key={stat.label}
+                      className="rounded-card border border-line bg-surface px-4 py-3"
+                    >
+                      <p className={`font-mono text-2xl font-bold tabular-nums ${stat.tone}`}>
+                        {stat.value}
+                      </p>
+                      <p className="mt-1 text-xs font-semibold">{stat.label}</p>
+                      <p className="mt-0.5 text-[11px] leading-snug text-ink-soft">
+                        {stat.hint}
+                      </p>
+                    </div>
                   ))}
-                </p>
-                <p className="mt-4 border-t border-line pt-3 text-xs text-ink-soft">
-                  Run {runResult.run_id.slice(0, 8)} · plan v{runResult.plan_version} ·{" "}
-                  {runResult.transform_errors} transformation error(s)
-                </p>
-              </div>
+                </div>
+
+                {runResult.transform_errors > 0 && (
+                  <p className="mt-3 flex items-start gap-2 rounded-card border border-bad/30 bg-bad-soft px-4 py-3 text-[13px] leading-relaxed text-ink-soft">
+                    <FileWarning size={15} className="mt-0.5 shrink-0 text-bad" aria-hidden />
+                    <span>
+                      <span className="font-semibold text-bad">
+                        {runResult.transform_errors} row(s) were refused
+                      </span>{" "}
+                      rather than converted under a rule nobody approved. Each
+                      refusal and its reason appears in the evidence report.
+                    </span>
+                  </p>
+                )}
+
+                {/* Technical detail, kept and available, visually subordinate. */}
+                <details className="group mt-3 overflow-hidden rounded-card border border-line bg-surface">
+                  <summary className="cursor-pointer list-none px-5 py-3 text-[13px] font-semibold text-ink-soft transition-colors hover:bg-muted/50">
+                    Row accounting, stated as arithmetic
+                  </summary>
+                  <div className="border-t border-line px-5 py-4">
+                    <p className="font-mono text-[13px] leading-loose">
+                      {runResult.accounting.arithmetic.map((line) => (
+                        <span key={line} className="block">
+                          {line}
+                        </span>
+                      ))}
+                    </p>
+                    <p className="mt-4 border-t border-line pt-3 font-mono text-[11px] text-ink-soft">
+                      run {runResult.run_id.slice(0, 8)} · plan v{runResult.plan_version}
+                    </p>
+                  </div>
+                </details>
+              </>
             )}
 
-            <div className="mt-6 flex justify-end">
+            <div className="mt-6 flex flex-col gap-3 rounded-card border border-line bg-surface px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <p className="max-w-xl text-[13px] leading-relaxed text-ink-soft">
+                {runResult
+                  ? "Nothing has reached the destination. An independent verifier now reads the staged rows back and checks them against the approved contract."
+                  : "Staging has to finish before anything can be verified."}
+              </p>
               <Button
+                icon={ArrowRight}
+                iconPosition="right"
                 onClick={() => void verifyNow()}
                 disabled={!runResult || busy !== null}
+                className="sm:shrink-0"
               >
                 {busy ?? "Run verification"}
               </Button>

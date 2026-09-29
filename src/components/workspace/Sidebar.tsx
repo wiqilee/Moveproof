@@ -58,12 +58,23 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
           onClick={onNavigate}
           aria-current={active ? "page" : undefined}
           className={[
-            "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-colors duration-150",
+            "relative flex items-center gap-2.5 rounded-control px-3 py-2 text-[13px]",
+            "transition-[background-color,color] duration-150",
             active
               ? "bg-brand-soft font-semibold text-brand"
               : "text-ink-soft hover:bg-muted hover:text-ink",
           ].join(" ")}
         >
+          {/* A marker on the rail, so the active route is legible at a glance
+              and without relying on the tint alone. */}
+          <span
+            className={[
+              "absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-full",
+              "transition-colors duration-150",
+              active ? "bg-brand" : "bg-transparent",
+            ].join(" ")}
+            aria-hidden
+          />
           <item.icon size={15} aria-hidden />
           {item.label}
         </Link>

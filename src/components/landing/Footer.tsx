@@ -41,8 +41,21 @@ const socialIcons = [
 
 export function Footer() {
   return (
-    <footer className="bg-surface">
-      <div className="mx-auto max-w-6xl px-5 py-14 sm:px-6">
+    <footer className="relative border-t border-line bg-surface">
+      {/* The measurement grid one last time, very faint, so the page closes in
+          the language it opened with. */}
+      <div className="grid-surface pointer-events-none absolute inset-0 opacity-60" aria-hidden />
+
+      <div className="relative mx-auto max-w-6xl px-5 py-16 sm:px-6">
+        <div className="mb-12 max-w-xl">
+          <p className="eyebrow">Verification-first data migration</p>
+          <p className="mt-3 text-[1.35rem] font-semibold leading-snug tracking-[-0.02em]">
+            Move data. Prove what changed.
+          </p>
+        </div>
+
+        <div className="rule-fade mb-10" aria-hidden />
+
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
           <div>
             <Logo href={routes.home} />
@@ -130,7 +143,9 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="mt-12 flex flex-col gap-3 border-t border-line pt-6 text-xs text-ink-soft sm:flex-row sm:items-center sm:justify-between">
+        {/* The legal strip sits on the canvas rather than the footer surface,
+            so it reads as the base of the page. */}
+        <div className="-mx-5 mt-14 flex flex-col gap-3 border-t border-line bg-canvas px-5 py-6 text-xs text-ink-soft sm:-mx-6 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <p>MIT licensed. Copyright 2026 {AUTHOR.name}.</p>
           <p>
             Built for the{" "}

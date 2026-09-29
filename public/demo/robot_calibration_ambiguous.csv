@@ -1,0 +1,6 @@
+robot_id,joint_name,zero_offset_deg,gear_ratio,firmware_version,sensor_frame,calibration_date
+0017,elbow_left,12.500,"1,250.00",3.08,arm_left,03/04/2026
+0018,shoulder_left,-2.250,"1250,00",3.08,arm_left,04/03/2026
+0019,wrist_left,0.750,"980,40",3.09,tool_frame,12/05/2026
+0020,elbow_right,11.125,"1,004.05",3.09,arm_right,05/12/2026
+0021,shoulder_right,-1.875,"310,75",3.10,arm_right,07/08/2026

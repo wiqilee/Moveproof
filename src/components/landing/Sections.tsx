@@ -42,22 +42,34 @@ export function ProblemSection() {
           </div>
 
           <div>
-            <div className="overflow-hidden rounded-card border border-line">
-              <div className="grid grid-cols-[1fr_auto_1fr] gap-3 border-b border-line bg-muted/60 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-ink-soft">
+            <div className="panel overflow-hidden">
+              <div className="grid grid-cols-[1fr_auto_1fr] gap-3 border-b border-line bg-muted/50 px-5 py-3 text-[10px] font-semibold uppercase tracking-wider text-ink-soft">
                 <span>In the spreadsheet</span>
                 <span aria-hidden />
                 <span>In the database</span>
               </div>
               {FAILURE_MODES.map((mode) => (
-                <div key={mode.cause} className="border-b border-line px-4 py-3.5 last:border-b-0">
+                <div
+                  key={mode.cause}
+                  className="border-b border-line px-5 py-4 transition-colors last:border-b-0 hover:bg-muted/30"
+                >
                   <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                    <span className="truncate font-mono text-sm">{mode.before}</span>
-                    <ArrowRight size={13} className="text-line" aria-hidden />
-                    <span className="truncate font-mono text-sm text-bad">{mode.after}</span>
+                    {/* The value carries the point, so it is set larger than
+                        the prose around it. */}
+                    <span className="truncate font-mono text-[17px] font-semibold tracking-tight">
+                      {mode.before}
+                    </span>
+                    <ArrowRight size={15} className="shrink-0 text-ink-soft/60" aria-hidden />
+                    <span className="truncate font-mono text-[17px] font-semibold tracking-tight text-bad">
+                      {mode.after}
+                    </span>
                   </div>
-                  <p className="mt-1.5 text-xs text-ink-soft">{mode.cause}</p>
+                  <p className="mt-2 text-xs leading-relaxed text-ink-soft">{mode.cause}</p>
                 </div>
               ))}
+              <p className="bg-muted/40 px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
+                Successful import is not preserved meaning
+              </p>
             </div>
           </div>
         </div>
@@ -111,17 +123,55 @@ export function HowItWorks() {
           </p>
         </div>
 
-        <ol className="mt-12 grid gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
+        <ol className="mt-12 grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {STAGES.map((stage, index) => (
-            <li key={stage.title} className="border-t-2 border-navy pt-5">
-              <p className="font-mono text-xs text-ink-soft">
-                {String(index + 1).padStart(2, "0")}
-              </p>
-              <h3 className="mt-3 text-[15px] font-semibold tracking-tight">{stage.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-ink-soft">{stage.body}</p>
-              <p className="mt-4 border-t border-line pt-3 font-mono text-[11px] text-ink-soft">
-                {stage.detail}
-              </p>
+            <li key={stage.title} className="group relative">
+              {/* The rail runs between cards on a wide screen, so the four
+                  read as one pipeline rather than four unrelated panels. The
+                  segment leaving a hovered card picks up the accent, which is
+                  a pointer affordance and not a progress reading. */}
+              {index < STAGES.length - 1 && (
+                <span
+                  className="absolute right-[-1rem] top-9 hidden h-px w-4 bg-line transition-colors duration-200 group-hover:bg-brand group-focus-within:bg-brand lg:block"
+                  aria-hidden
+                />
+              )}
+              {/* Scale is deliberately tiny and paired with a translate, so a
+                  hovered card lifts without nudging its neighbours. Transform
+                  is motion-safe only; the colour feedback always applies.
+                  The focus-within rules are carried alongside hover so the
+                  state exists the moment a card gains a focusable child. These
+                  cards are descriptive text today, so no tab stop is added to
+                  them: a focus ring on something that cannot be actioned is
+                  worse for a keyboard user than no stop at all. */}
+              <article
+                className={[
+                  "panel p-5",
+                  "transition-[transform,box-shadow,border-color] duration-200 ease-out",
+                  "motion-safe:group-hover:-translate-y-1 motion-safe:group-hover:scale-[1.012]",
+                  "motion-safe:group-focus-within:-translate-y-1 motion-safe:group-focus-within:scale-[1.012]",
+                  "group-hover:border-brand/40 group-focus-within:border-brand/40",
+                ].join(" ")}
+                style={{ transformOrigin: "center" }}
+              >
+                <div className="flex items-center gap-2.5">
+                  <span
+                    className={[
+                      "flex h-7 w-7 items-center justify-center rounded-full",
+                      "bg-navy font-mono text-[11px] font-bold text-on-navy",
+                      "transition-colors duration-200",
+                      "group-hover:bg-brand group-focus-within:bg-brand",
+                    ].join(" ")}
+                  >
+                    {index + 1}
+                  </span>
+                  <h3 className="text-[15px] font-semibold tracking-tight">{stage.title}</h3>
+                </div>
+                <p className="mt-3 text-sm leading-relaxed text-ink-soft">{stage.body}</p>
+                <p className="mt-4 border-t border-line pt-3 font-mono text-[11px] text-ink-soft">
+                  {stage.detail}
+                </p>
+              </article>
             </li>
           ))}
         </ol>
@@ -171,7 +221,26 @@ export function Approach() {
           </p>
         </div>
 
-        <ol className="mt-8 space-y-2.5">
+        <div className="mt-8 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            "AI proposes",
+            "Validated code executes",
+            "Independent evidence decides",
+            "Humans approve ambiguity",
+          ].map((clause, index) => (
+            <p
+              key={clause}
+              className="panel-flat px-4 py-3 text-[13px] font-semibold tracking-tight"
+            >
+              <span className="mr-2 font-mono text-[11px] font-bold text-brand">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              {clause}
+            </p>
+          ))}
+        </div>
+
+        <ol className="mt-4 space-y-2.5">
           {PRINCIPLES.map((principle, index) => (
             <li key={principle.title}>
               <article className="group relative rounded-card border border-line bg-canvas/40 transition-colors duration-200 hover:bg-muted/40">
@@ -215,17 +284,34 @@ export function Approach() {
           ))}
         </ol>
 
-        <div className="mt-8 grid gap-4 border-t border-line pt-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-10">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
-            Verification boundary
-          </p>
+        <div className="mt-10">
+          <p className="eyebrow">Verification boundary</p>
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <article className="panel overflow-hidden">
+              <h3 className="border-b border-ok/20 bg-ok-soft/60 px-5 py-3 text-[13px] font-semibold text-ok">
+                What MoveProof proves
+              </h3>
+              <p className="px-5 py-4 text-sm leading-relaxed text-ink-soft">
+                A passed verification means the invariants in the approved contract
+                held. For a robot calibration migration that is the recorded
+                calibration values surviving the declared migration contract.
+              </p>
+            </article>
 
-          <p className="text-sm leading-relaxed text-ink-soft">
-            A passed verification means the invariants in the approved contract held. It does not
-            mean every possible semantic error has been ruled out, and the evidence report says so
-            in its own limitations section. For robot calibration migrations, this verifies the data
-            migration contract; it does not certify calibration correctness or hardware safety.
-          </p>
+            <article className="panel overflow-hidden">
+              <h3 className="border-b border-line bg-muted/50 px-5 py-3 text-[13px] font-semibold text-ink-soft">
+                What MoveProof does not claim
+              </h3>
+              <ul className="space-y-2 px-5 py-4 text-sm leading-relaxed text-ink-soft">
+                <li>
+                  That every possible semantic error has been ruled out. The
+                  evidence report says so in its own limitations section.
+                </li>
+                <li>Calibration correctness.</li>
+                <li>Robot behaviour, or hardware safety.</li>
+              </ul>
+            </article>
+          </div>
         </div>
       </div>
     </section>
@@ -274,7 +360,100 @@ export function Technology() {
             </p>
           </div>
 
-          <div className="self-start rounded-card border border-line bg-surface p-6">
+          <div className="space-y-4">
+            {/* The authority path, drawn as a spine. Tavily hangs off it to one
+                side, because advisory context never decides anything. */}
+            <div className="panel p-5">
+              <p className="eyebrow">The authority path</p>
+              <ol className="mt-4">
+                {[
+                  { step: "Nebius / AI reasoning", note: "proposes, never executes" },
+                  { step: "Deterministic validation", note: "allowlist, issues, acknowledgements" },
+                  { step: "Human approval where required", note: "ambiguity is a decision" },
+                  { step: "Deterministic execution", note: "runs only the approved version" },
+                  { step: "Independent verifier", note: "shares no code with the planner" },
+                  { step: "Canonical evidence", note: "one object, three renderings" },
+                ].map((item, index, all) => (
+                  <li key={item.step} className="group/step relative flex gap-3 pb-4 last:pb-0">
+                    {/* The spine is blue for its whole length. Every stage in
+                        the authority path is part of the architecture, so
+                        none of them is drawn as pending: this diagram
+                        describes the trusted path, not the state of any one
+                        migration. */}
+                    {index < all.length - 1 && (
+                      <span
+                        className="absolute left-[7px] top-4 h-full w-px bg-brand/45 transition-colors duration-200 group-hover/step:bg-brand"
+                        aria-hidden
+                      />
+                    )}
+                    <span
+                      className="relative mt-1 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-brand/80 transition-[background-color,transform] duration-200 group-hover/step:bg-brand motion-safe:group-hover/step:scale-110"
+                      aria-hidden
+                    >
+                      <span className="h-1 w-1 rounded-full bg-on-brand" />
+                    </span>
+                    <span className="min-w-0 transition-transform duration-200 motion-safe:group-hover/step:translate-x-0.5">
+                      <span className="block text-[13px] font-semibold text-ink-soft transition-colors duration-200 group-hover/step:text-ink">
+                        {item.step}
+                      </span>
+                      <span className="block text-xs text-ink-soft">{item.note}</span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+
+              {/* Deliberately grey, deliberately horizontal, deliberately
+                  below the spine's end: Tavily branches away from the
+                  authority path and never joins it. */}
+              <div className="mt-2 flex items-start gap-3 border-t border-line pt-4">
+                <span className="mt-2 h-px w-6 shrink-0 bg-line" aria-hidden />
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-semibold text-ink-soft">
+                    Tavily, external evidence
+                  </span>
+                  <span className="block text-xs leading-relaxed text-ink-soft">
+                    Advisory only. It informs a human reading a mapping and has no
+                    path to verification state or commit eligibility.
+                  </span>
+                </span>
+              </div>
+            </div>
+
+
+          </div>
+        </div>
+
+        {/* The build list spans the section. Infrastructure went back beside
+            the authority path, where it fills the space the long narrative
+            would otherwise leave empty on the right. */}
+        {/* Two rows, each balanced: narrative beside the authority path
+            above, then Infrastructure beside the build list here. A single
+            full-width panel under a two-column section reads as stranded. */}
+        <div className="mt-12 grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+            <div className="panel p-5">
+              <p className="eyebrow">Infrastructure</p>
+              <ul className="mt-3 flex flex-wrap gap-1.5">
+                {[
+                  "Next.js / Vercel",
+                  "FastAPI",
+                  "Rust verifier",
+                  "Cloud SQL",
+                  "private GCS",
+                  "Nebius Token Factory",
+                  "Tavily",
+                ].map((item) => (
+                  <li
+                    key={item}
+                    className="rounded-full border border-line px-2.5 py-1 font-mono text-[11px] text-ink-soft"
+                  >
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+
+            <div className="panel self-start p-6">
             <h3 className="text-sm font-semibold">What is running in this build</h3>
             <ul className="mt-4 space-y-2.5">
               {live.map((item) => (
@@ -303,7 +482,7 @@ export function Technology() {
               Nebius and NVIDIA are named to describe technologies used by MoveProof. Neither company
               endorses this project.
             </p>
-          </div>
+            </div>
         </div>
       </div>
     </section>
@@ -316,8 +495,22 @@ export function Technology() {
 
 export function ClosingCta() {
   return (
-    <section className="border-b border-line bg-navy text-on-navy">
-      <div className="mx-auto max-w-4xl px-5 py-20 text-center sm:px-6">
+    <section className="relative overflow-hidden border-b border-line bg-navy text-on-navy">
+      {/* The same measurement grid as the rig, so the page closes in the
+          language it opened with. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.18]"
+        style={{
+          backgroundImage:
+            "linear-gradient(to right, rgb(255 255 255 / 0.12) 1px, transparent 1px), linear-gradient(to bottom, rgb(255 255 255 / 0.12) 1px, transparent 1px)",
+          backgroundSize: "56px 56px",
+          maskImage: "radial-gradient(ellipse at 50% 0%, black, transparent 72%)",
+          WebkitMaskImage: "radial-gradient(ellipse at 50% 0%, black, transparent 72%)",
+        }}
+      />
+      <div className="relative mx-auto max-w-4xl px-5 py-24 text-center sm:px-6">
+        <p className="eyebrow mb-4 text-on-navy/60">Evidence, not assurance</p>
         <h2 className="text-3xl font-semibold tracking-[-0.02em] sm:text-[2.5rem]">
           See what your migration actually changed.
         </h2>

@@ -14,8 +14,13 @@ const sections = [
 
 export function LandingNav() {
   return (
-    <header className="sticky top-0 z-30 border-b border-line/80 bg-canvas/80 backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-5 sm:px-6">
+    // Translucent and taller, with the hairline only at the very bottom, so
+    // the bar reads as the page's own edge rather than a separate strip.
+    // A floating inset bar rather than a full-width strip: it sits on the
+    // page instead of capping it, which is what makes the canvas read as
+    // continuous behind it.
+    <header className="sticky top-0 z-30 px-3 pt-3 sm:px-5 sm:pt-4">
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between rounded-card border border-line bg-surface/80 px-3 backdrop-blur-xl sm:px-4" style={{ boxShadow: "var(--elev-2)" }}>
         <Logo href={routes.home} />
 
         <nav aria-label="Sections" className="hidden items-center gap-1 md:flex">
@@ -23,7 +28,7 @@ export function LandingNav() {
             <a
               key={section.href}
               href={section.href}
-              className="rounded-md px-3 py-1.5 text-[13px] text-ink-soft transition-colors hover:bg-muted hover:text-ink"
+              className="rounded-control px-3 py-2 text-[13px] text-ink-soft transition-colors hover:bg-muted hover:text-ink"
             >
               {section.label}
             </a>

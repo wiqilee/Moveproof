@@ -17,7 +17,9 @@ export function TopBar({ crumbs }: { crumbs: Crumb[] }) {
     migrationStatePresentation.draft;
 
   return (
-    <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-line bg-surface/85 px-5 py-2.5 backdrop-blur-md sm:px-7">
+    // Sits on the canvas rather than on its own surface, so the bar and the
+    // sidebar read as one shell instead of two stacked strips.
+    <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-line bg-canvas/80 px-5 py-3 backdrop-blur-xl sm:px-7">
       <Breadcrumbs crumbs={crumbs} />
       <div className="flex items-center gap-2.5">
         {busy && (

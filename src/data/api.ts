@@ -12,6 +12,7 @@
  */
 
 import { api, ApiError } from "@/lib/api-client";
+import type { ErrorKind } from "@/lib/api-client";
 import type { ApiEvidence, ApiPlanMapping } from "@/lib/api-types";
 import type { MappingStatus } from "@/domain/types";
 
@@ -85,6 +86,14 @@ export function describeError(error: unknown): {
   title: string;
   detail: string;
   retryable: boolean;
+  /**
+   * The backend's own classification, carried through rather than dropped.
+   *
+   * A screen that wants to say *why* something failed needs this. Inferring a
+   * destination conflict from an error string would be guessing, and a commit
+   * that failed because the network dropped is not a conflict.
+   */
+  kind: ErrorKind;
 } {
   if (error instanceof ApiError) {
     const retryable = error.isRetryable;
@@ -92,40 +101,56 @@ export function describeError(error: unknown): {
       case "network":
         return {
           title: "The backend is not reachable",
-          detail: `${error.message} Nothing has been lost and you can retry.`,
+          // Safe for a read, unsafe for a write: a commit can succeed on the
+          // server and still lose its response. This sentence is shown by the
+          // global banner too, so it must not claim anything about what the
+          // server did.
+          detail: `${error.message} The request did not complete normally. For actions that may write data, refresh the current state before retrying.`,
           retryable: true,
+          kind: error.kind,
         };
       case "commit_gate":
         return {
           title: "Commit was blocked",
           detail: error.message,
           retryable: false,
+          kind: error.kind,
         };
       case "workflow":
         return {
           title: "This step cannot run yet",
           detail: error.message,
           retryable: false,
+          kind: error.kind,
         };
       case "parse":
         return {
           title: "The file could not be read",
           detail: error.message,
           retryable: false,
+          kind: error.kind,
         };
       case "integrity":
         return {
           title: "The stored source failed its integrity check",
           detail: error.message,
           retryable: false,
+          kind: error.kind,
         };
       default:
-        return { title: "Something went wrong", detail: error.message, retryable };
+        return {
+          title: "Something went wrong",
+          detail: error.message,
+          retryable,
+          kind: error.kind,
+        };
     }
   }
   return {
     title: "Something went wrong",
     detail: error instanceof Error ? error.message : String(error),
     retryable: false,
+    // Not an ApiError at all, so the backend classified nothing.
+    kind: "unknown",
   };
 }

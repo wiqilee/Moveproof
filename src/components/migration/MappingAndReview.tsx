@@ -26,6 +26,61 @@ import { useMigration } from "@/lib/migration-store";
 
 type Profile = "safe" | "legacy" | "model";
 
+/**
+ * How each approved reading is described, and what it does to a real value.
+ *
+ * The worked example is the whole point. "Day first" is abstract; seeing
+ * 03/04/2026 become 3 April 2026 is not, and the difference between the two
+ * readings is a month.
+ */
+/**
+ * Illustrative values, not data from the file.
+ *
+ * This component serves every destination, so the worked example is fixed
+ * rather than sampled. It is labelled Example everywhere it appears: a
+ * synthetic value that reads as if it came from the upload would be worse
+ * than no example at all.
+ */
+const DATE_READINGS: Record<
+  string,
+  { label: string; pattern: string; iso: string; plain: string }
+> = {
+  day_first: {
+    label: "Day first",
+    pattern: "DD/MM/YYYY",
+    iso: "2026-04-03",
+    plain: "3 April 2026",
+  },
+  month_first: {
+    label: "Month first",
+    pattern: "MM/DD/YYYY",
+    iso: "2026-03-04",
+    plain: "4 March 2026",
+  },
+};
+
+const DECIMAL_READINGS: Record<
+  string,
+  { label: string; plain: string; example: string }
+> = {
+  dot_decimal: {
+    label: "Dot decimal",
+    plain: "A dot separates the decimals and a comma groups thousands.",
+    example: "1,250.00 → 1250.00",
+  },
+  comma_decimal: {
+    label: "Comma decimal",
+    plain: "A comma separates the decimals and a dot groups thousands.",
+    example: "1250,00 → 1250.00",
+  },
+  strict_either: {
+    label: "Either, per value",
+    plain:
+      "Each value is read only when it is unambiguous on its own. Anything else is refused rather than converted.",
+    example: "980,40 → 980.40",
+  },
+};
+
 const PROFILE_LABELS: Record<
   Profile,
   { name: string; detail: string; tag: string; icon: typeof ShieldCheck }
@@ -409,27 +464,38 @@ export function MappingStep({
                       one executed and the one verified against.
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      {[
-                        { value: "day_first", label: "Day first", hint: "DD/MM/YYYY" },
-                        { value: "month_first", label: "Month first", hint: "MM/DD/YYYY" },
-                      ].map((option) => (
+                      {Object.entries(DATE_READINGS).map(([value, reading]) => (
                         <button
-                          key={option.value}
+                          key={value}
                           type="button"
-                          onClick={() => setDatePolicy(option.value)}
-                          aria-pressed={datePolicy === option.value}
+                          onClick={() => setDatePolicy(value)}
+                          aria-pressed={datePolicy === value}
                           className={[
-                            "rounded-control border px-3 py-2 text-left transition-colors",
-                            datePolicy === option.value
+                            "min-w-[180px] flex-1 rounded-control border px-3.5 py-3 text-left",
+                            "transition-[border-color,background-color] duration-200",
+                            datePolicy === value
                               ? "border-brand bg-brand-soft ring-1 ring-brand/20"
                               : "border-line bg-surface hover:bg-muted/50",
                           ].join(" ")}
                         >
-                          <span className="block text-[13px] font-semibold">
-                            {option.label}
+                          <span className="flex items-baseline justify-between gap-2">
+                            <span className="text-[13px] font-semibold">
+                              {reading.label}
+                            </span>
+                            <span className="font-mono text-[10px] text-ink-soft">
+                              {reading.pattern}
+                            </span>
                           </span>
-                          <span className="block font-mono text-[10px] text-ink-soft">
-                            {option.hint}
+                          {/* The consequence, not the rule. Labelled so it is
+                              never mistaken for a value from the file. */}
+                          <span className="mt-2 block text-[10px] font-semibold uppercase tracking-wider text-ink-soft/70">
+                            Example
+                          </span>
+                          <span className="block font-mono text-[11px] text-ink-soft">
+                            03/04/2026 → {reading.iso}
+                          </span>
+                          <span className="mt-0.5 block text-[11px] text-ink-soft">
+                            {reading.plain}
                           </span>
                         </button>
                       ))}
@@ -448,37 +514,36 @@ export function MappingStep({
                       refused rather than converted.
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      {[
-                        { value: "dot_decimal", label: "Dot decimal", hint: "1,250.00" },
-                        { value: "comma_decimal", label: "Comma decimal", hint: "1250,00" },
-                        {
-                          value: "strict_either",
-                          label: "Either, only when unambiguous",
-                          hint: "per value",
-                        },
-                      ].map((option) => (
+                      {Object.entries(DECIMAL_READINGS).map(([value, reading]) => (
                         <button
-                          key={option.value}
+                          key={value}
                           type="button"
                           onClick={() =>
                             setDecimalConventions((current) => ({
                               ...current,
-                              [column]: option.value,
+                              [column]: value,
                             }))
                           }
-                          aria-pressed={decimalConventions[column] === option.value}
+                          aria-pressed={decimalConventions[column] === value}
                           className={[
-                            "rounded-control border px-3 py-2 text-left transition-colors",
-                            decimalConventions[column] === option.value
+                            "min-w-[200px] flex-1 rounded-control border px-3.5 py-3 text-left",
+                            "transition-[border-color,background-color] duration-200",
+                            decimalConventions[column] === value
                               ? "border-brand bg-brand-soft ring-1 ring-brand/20"
                               : "border-line bg-surface hover:bg-muted/50",
                           ].join(" ")}
                         >
                           <span className="block text-[13px] font-semibold">
-                            {option.label}
+                            {reading.label}
                           </span>
-                          <span className="block font-mono text-[10px] text-ink-soft">
-                            {option.hint}
+                          <span className="mt-1.5 block text-[10px] font-semibold uppercase tracking-wider text-ink-soft/70">
+                            Example
+                          </span>
+                          <span className="block font-mono text-[11px] text-ink-soft">
+                            {reading.example}
+                          </span>
+                          <span className="mt-1 block text-[11px] leading-relaxed text-ink-soft">
+                            {reading.plain}
                           </span>
                         </button>
                       ))}
@@ -574,7 +639,7 @@ export function ReviewStep({
   onBack: () => void;
   backLabel: string;
 }) {
-  const { proposal, planVersion, filename, busy } = useMigration();
+  const { proposal, planVersion, filename, busy, approvedDecisions } = useMigration();
   const risky = proposal?.plan.mappings.filter((m) => m.requires_acknowledgement) ?? [];
 
   return (
@@ -602,7 +667,17 @@ export function ReviewStep({
             {[
               ["Source file", filename ?? "not set"],
               ["Approved plan", planVersion ? `v${planVersion}` : "not approved"],
-              ["Date policy", proposal?.plan.date_format_policy ?? "not set"],
+              [
+                "Date policy",
+                // After approval the store holds what the reviewer chose. The
+                // proposal object predates the approval, which is why it still
+                // reads "not set" and why the summary used to contradict the
+                // decision that had just been made.
+                approvedDecisions?.dateFormatPolicy
+                  ? DATE_READINGS[approvedDecisions.dateFormatPolicy]?.label ??
+                    approvedDecisions.dateFormatPolicy
+                  : proposal?.plan.date_format_policy ?? "not required",
+              ],
               ["Duplicate policy", proposal?.plan.duplicate_policy ?? "not set"],
               ["Conflict policy", "fail closed"],
             ].map(([label, value]) => (
@@ -655,6 +730,66 @@ export function ReviewStep({
           </div>
         </div>
       </div>
+
+      {/* The readings a human approved, stated as their effect. A summary
+          that says "not set" beside a decision just made is worse than no
+          summary at all. */}
+      {approvedDecisions &&
+        (approvedDecisions.dateFormatPolicy ||
+          Object.keys(approvedDecisions.decimalConventions).length > 0) && (
+          <div className="mt-4 overflow-hidden rounded-card border border-line bg-surface shadow-sm">
+            <h3 className="border-b border-line bg-muted/40 px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
+              Readings you approved
+            </h3>
+            <dl className="divide-y divide-line">
+              {approvedDecisions.dateFormatPolicy && (
+                <div className="px-5 py-3">
+                  <dt className="text-[13px] font-semibold">Date interpretation</dt>
+                  <dd className="mt-1 text-[13px] text-ink-soft">
+                    {DATE_READINGS[approvedDecisions.dateFormatPolicy]?.label ??
+                      approvedDecisions.dateFormatPolicy}
+                    {DATE_READINGS[approvedDecisions.dateFormatPolicy] && (
+                      <>
+                        {" "}
+                        <span className="font-mono text-[11px]">
+                          (
+                          {DATE_READINGS[approvedDecisions.dateFormatPolicy].pattern}
+                          )
+                        </span>
+                        <span className="mt-1 block font-mono text-[11px]">
+                          Example: 03/04/2026 →{" "}
+                          {DATE_READINGS[approvedDecisions.dateFormatPolicy].iso}
+                        </span>
+                      </>
+                    )}
+                  </dd>
+                </div>
+              )}
+              {Object.entries(approvedDecisions.decimalConventions).map(
+                ([column, reading]) => (
+                  <div key={column} className="px-5 py-3">
+                    <dt className="text-[13px] font-semibold">
+                      Decimal interpretation ·{" "}
+                      <span className="font-mono">{column}</span>
+                    </dt>
+                    <dd className="mt-1 text-[13px] text-ink-soft">
+                      {DECIMAL_READINGS[reading]?.label ?? reading}
+                      {DECIMAL_READINGS[reading] && (
+                        <span className="mt-1 block text-[11px] leading-relaxed">
+                          {DECIMAL_READINGS[reading].plain}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                )
+              )}
+            </dl>
+            <p className="border-t border-line bg-muted/30 px-5 py-3 text-xs leading-relaxed text-ink-soft">
+              These selections were used when approving plan v{planVersion}. The
+              backend-approved plan remains the authority.
+            </p>
+          </div>
+        )}
 
       <WizardActions onBack={onBack} backLabel={`Back to ${backLabel.toLowerCase()}`}>
         <Button

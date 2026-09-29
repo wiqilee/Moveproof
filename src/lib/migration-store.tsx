@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { api, describeError } from "@/data/api";
+import type { ErrorKind } from "@/lib/api-client";
 import type {
   ApiCheck,
   ApiEvidence,
@@ -39,6 +40,8 @@ export interface ErrorState {
   title: string;
   detail: string;
   retryable: boolean;
+  /** The backend's classification. Screens use it instead of reading text. */
+  kind: ErrorKind;
 }
 
 interface MigrationStore {
@@ -68,6 +71,8 @@ interface MigrationStore {
   summary: ApiVerification["summary"] | null;
   state: string;
   commitAllowed: boolean;
+  /** Mandatory checks that are failed or awaiting review. */
+  mandatoryBlockers: ApiCheck[];
   committed: boolean;
 
   // Status
@@ -88,6 +93,18 @@ interface MigrationStore {
    * which the backend reads as the customer profile.
    */
   destinationProfile: string | null;
+  /**
+   * The readings a human approved for this plan.
+   *
+   * Held here because the review step has to show what was decided, and the
+   * proposal it can see is the one *before* approval. Nothing is invented:
+   * these are the values this browser sent, and the approved plan version on
+   * the backend is the authority.
+   */
+  approvedDecisions: {
+    dateFormatPolicy: string | null;
+    decimalConventions: Record<string, string>;
+  } | null;
   setDestinationProfile: (profile: string) => void;
   selectMigration: (id: string) => Promise<void>;
   proposePlan: (profile: "safe" | "legacy" | "model") => Promise<void>;
@@ -105,7 +122,7 @@ interface MigrationStore {
   startRun: () => Promise<string | null>;
   runVerification: (runId?: string) => Promise<void>;
   loadRepairProposal: () => Promise<void>;
-  loadEvidence: () => Promise<void>;
+  loadEvidence: () => Promise<boolean>;
   commit: (conflictPolicy?: string) => Promise<boolean>;
   reset: () => void;
 }
@@ -122,6 +139,10 @@ export function MigrationProvider({ children }: { children: ReactNode }) {
   const [migrationId, setMigrationId] = useState<string | null>(null);
   const [filename, setFilename] = useState<string | null>(null);
   const [destinationProfile, setDestinationProfile] = useState<string | null>(null);
+  const [approvedDecisions, setApprovedDecisions] = useState<{
+    dateFormatPolicy: string | null;
+    decimalConventions: Record<string, string>;
+  } | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [planVersion, setPlanVersion] = useState<number | null>(null);
   const [proposal, setProposal] = useState<ApiPlanProposal | null>(null);
@@ -194,6 +215,7 @@ export function MigrationProvider({ children }: { children: ReactNode }) {
     setRepairProposal(null);
     setEvidence(null);
     setDestinationProfile(null);
+    setApprovedDecisions(null);
     setRunPhase("not_started");
     setCommitted(false);
     setError(null);
@@ -218,10 +240,45 @@ export function MigrationProvider({ children }: { children: ReactNode }) {
 
   const selectMigration = useCallback(
     async (id: string) => {
+      // Cleared before the request, not after it. Clearing afterwards left
+      // migration A's run, accounting, verification and evidence on screen
+      // while B was loading, and left them there indefinitely if B failed to
+      // load. The requested migration is empty until its own data arrives.
+      // The id goes too. Leaving it set meant the store could hold empty
+      // presentation state while still claiming to be migration A, and stay
+      // that way if B failed to load.
+      setMigrationId(null);
+      setFilename(null);
+      setDestinationProfile(null);
+      setPlanVersion(null);
+      setCommitted(false);
+      setProposal(null);
+      setRunId(null);
+      setRunResult(null);
+      setVerification(null);
+      setRepairProposal(null);
+      setEvidence(null);
+      setRunPhase("not_started");
+      setApprovedDecisions(null);
+
       await guard("Loading migration", async () => {
         const migration = await api.getMigration(id);
+
+        setProposal(null);
+        setRunId(null);
+        setRunResult(null);
+        setVerification(null);
+        setRepairProposal(null);
+        setEvidence(null);
+        setRunPhase("not_started");
+        setApprovedDecisions(null);
+
         setMigrationId(migration.id);
         setFilename(migration.filename);
+        // Decisions belong to one migration. The approved plan on the backend
+        // holds them, but GET /api/migrations/{id} does not return them, so
+        // there is nothing to restore here. Showing none is correct; showing
+        // the previous migration's readings would be a lie.
         // Null on an older migration, which the backend resolves to customers.
         setDestinationProfile(migration.destination_profile ?? null);
         const approved = migration.plans.filter((p) => p.approved_at !== null);
@@ -292,6 +349,10 @@ export function MigrationProvider({ children }: { children: ReactNode }) {
       );
       if (!result) return false;
       setPlanVersion(result.plan_version);
+      setApprovedDecisions({
+        dateFormatPolicy: input.dateFormatPolicy ?? null,
+        decimalConventions: input.decimalConventions ?? {},
+      });
       // A new approved plan invalidates any earlier result.
       setVerification(null);
       setRunResult(null);
@@ -341,15 +402,22 @@ export function MigrationProvider({ children }: { children: ReactNode }) {
     if (result) setRepairProposal(result);
   }, [guard, migrationId, runId]);
 
-  const loadEvidence = useCallback(async () => {
-    if (!migrationId) return;
+  /**
+   * Reload the canonical evidence.
+   *
+   * Returns whether the reload succeeded, because a screen recovering from an
+   * ambiguous commit has to tell "the evidence says no commit" apart from "I
+   * could not reach the backend to find out".
+   */
+  const loadEvidence = useCallback(async (): Promise<boolean> => {
+    if (!migrationId) return false;
     const result = await guard("Assembling the evidence record", () =>
       api.evidence(migrationId, runId ?? undefined)
     );
-    if (result) {
-      setEvidence(result);
-      setCommitted(result.commit !== null);
-    }
+    if (!result) return false;
+    setEvidence(result);
+    setCommitted(result.commit !== null);
+    return true;
   }, [guard, migrationId, runId]);
 
   const commit = useCallback(
@@ -378,14 +446,28 @@ export function MigrationProvider({ children }: { children: ReactNode }) {
     return verification?.state ?? "plan_approved";
   }, [committed, planVersion, runPhase, hasResults, verification]);
 
-  const commitAllowed = useMemo(
+  /**
+   * Only a mandatory check gates a commit.
+   *
+   * The contract distinguishes mandatory from advisory, and the backend gate
+   * enforces that distinction. Counting every failure, as the summary totals
+   * do, made an advisory failure look like a blocker here while the backend
+   * would have allowed the commit. The backend remains the authority; this is
+   * the client agreeing with it rather than guessing.
+   */
+  const mandatoryBlockers = useMemo(
     () =>
-      hasResults &&
-      !committed &&
-      summary !== null &&
-      summary.failed === 0 &&
-      summary.review === 0,
-    [hasResults, committed, summary]
+      checks.filter(
+        (check) =>
+          check.mandatory !== false &&
+          (check.status === "failed" || check.status === "review")
+      ),
+    [checks]
+  );
+
+  const commitAllowed = useMemo(
+    () => hasResults && !committed && mandatoryBlockers.length === 0,
+    [hasResults, committed, mandatoryBlockers]
   );
 
   const value: MigrationStore = {
@@ -408,6 +490,7 @@ export function MigrationProvider({ children }: { children: ReactNode }) {
     summary,
     state,
     commitAllowed,
+    mandatoryBlockers,
     committed,
     busy,
     error,
@@ -417,6 +500,7 @@ export function MigrationProvider({ children }: { children: ReactNode }) {
     uploadFile,
     destinationProfile,
     setDestinationProfile,
+    approvedDecisions,
     selectMigration,
     proposePlan,
     approvePlan,

@@ -747,11 +747,15 @@ Moveproof/
 │   │   │   ├── LandingNav.tsx
 │   │   │   ├── Hero.tsx
 │   │   │   ├── HeroPreview.tsx             The interactive synthetic preview
+│   │   │   ├── CalibrationRig.tsx          Chooses WebGL or the static rig
+│   │   │   ├── CalibrationRig3D.tsx        React Three Fiber calibration scene
+│   │   │   ├── CalibrationRigFallback.tsx  SVG rig, used without WebGL
 │   │   │   ├── Sections.tsx
 │   │   │   ├── SocialIcons.tsx
 │   │   │   └── Footer.tsx
 │   │   ├── migration/
 │   │   │   ├── SourceAndDestination.tsx    Wizard steps one and two
+│   │   │   ├── DemoLibrary.tsx             Tracked fixtures through the real upload path
 │   │   │   ├── MappingAndReview.tsx        Wizard steps three and four
 │   │   │   ├── ExternalEvidencePanel.tsx   Advisory Tavily evidence during plan review
 │   │   │   ├── WizardActions.tsx
@@ -898,6 +902,10 @@ Moveproof/
 │   └── DEMO.md                             Three minute demo storyboard
 │
 ├── public/
+│   ├── demo/                               Tracked robotics fixtures, served statically
+│   │   ├── robot_calibration_clean.csv
+│   │   ├── robot_calibration_ambiguous.csv
+│   │   └── robot_calibration_multi_joint.csv
 │   ├── logo.svg                            Horizontal lockup
 │   ├── logo-mark.svg                       Square mark
 │   ├── logo-light.svg                      For dark surfaces

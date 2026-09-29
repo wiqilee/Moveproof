@@ -18,6 +18,7 @@ export default function ReportPage() {
     evidence,
     loadEvidence,
     commitAllowed,
+    committed,
     commit,
     busy,
     error,
@@ -26,17 +27,36 @@ export default function ReportPage() {
     selectMigration,
   } = useMigration();
 
-  const loaded = useRef(false);
+  // Two-phase hydration.
+  //
+  // The single-shot version called loadEvidence() immediately after
+  // selectMigration(), using the callback from the render *before* the store
+  // learned the new id. On a direct link or a reload that callback still
+  // closed over a null or previous migration, and the `loaded` ref then
+  // stopped the page from ever trying again.
+  //
+  // Phase one only asks the store to switch. Phase two runs on a later
+  // render, once the store actually reports this migration, and is keyed by
+  // migration id so it happens once per migration rather than once per mount.
+  const selecting = useRef<string | null>(null);
+  const evidenceLoadedFor = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!loaded.current) {
-      loaded.current = true;
-      const boot = async () => {
-        if (activeId !== migrationId) await selectMigration(migrationId);
-        await loadEvidence();
-      };
-      void boot();
-    }
-  }, [activeId, migrationId, selectMigration, loadEvidence]);
+    if (activeId === migrationId) return;
+    if (selecting.current === migrationId) return;
+    selecting.current = migrationId;
+    void selectMigration(migrationId);
+  }, [activeId, migrationId, selectMigration]);
+
+  useEffect(() => {
+    // Only now is loadEvidence bound to this migration.
+    if (activeId !== migrationId) return;
+    if (evidenceLoadedFor.current === migrationId) return;
+    evidenceLoadedFor.current = migrationId;
+    // A failure is left alone rather than retried: the ref stays set, so a
+    // dropped request does not become a loop. The user retries explicitly.
+    void loadEvidence();
+  }, [activeId, migrationId, loadEvidence]);
 
   return (
     <>
@@ -58,7 +78,10 @@ export default function ReportPage() {
             commitAllowed={commitAllowed}
             busy={busy}
             pdfAvailable={health?.reports.pdf_available ?? false}
-            onCommit={() => void commit()}
+            onCommit={() => commit()}
+            commitError={error}
+            committedSignal={committed}
+            onRefresh={() => loadEvidence()}
           />
         ) : busy ? (
           <Spinner label={busy} />

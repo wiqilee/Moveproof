@@ -228,7 +228,13 @@ export interface ApiEvidence {
     row_count: number;
     columns: string[];
   };
-  destination: { schema: string; schema_version: string };
+  destination: {
+    /** Sent since destination profiles shipped; absent on older records. */
+    profile?: string;
+    schema: string;
+    schema_version: string;
+    table?: string;
+  };
   plan: {
     version: number;
     proposed_by: string;

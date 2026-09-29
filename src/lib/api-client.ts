@@ -88,7 +88,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     const aborted = error instanceof DOMException && error.name === "AbortError";
     throw new ApiError(
       aborted
-        ? `The request to ${path} timed out. Your work is unchanged and you can retry.`
+        // A timeout says nothing about whether the server finished the work.
+        ? `The request to ${path} timed out before a result arrived.`
         : `Could not reach the backend at ${API_BASE_URL}. Is it running?`,
       0,
       "network"

@@ -16,6 +16,27 @@ import { useMigration } from "@/lib/migration-store";
 import type { ErrorState } from "@/lib/migration-store";
 import { routes } from "@/lib/routes";
 
+/**
+ * What the operator can actually do next, and whether evidence exists.
+ *
+ * Every value here comes from the migration list the backend already returns.
+ * A draft genuinely cannot be resumed, so it says so rather than offering a
+ * link that would silently restart the wizard.
+ */
+function nextAction(row: {
+  approved_plan_version: number | null;
+  verified_at: string | null;
+  committed_at: string | null;
+}): { label: string; evidence: string } {
+  if (row.committed_at)
+    return { label: "Open evidence", evidence: "Evidence available" };
+  if (row.verified_at)
+    return { label: "Review and commit", evidence: "Evidence available" };
+  if (row.approved_plan_version)
+    return { label: "Continue to execution", evidence: "No evidence yet" };
+  return { label: "Restart required", evidence: "No evidence yet" };
+}
+
 function stateLabel(row: {
   state: string;
   approved_plan_version: number | null;
@@ -25,7 +46,10 @@ function stateLabel(row: {
   if (row.committed_at) return "committed";
   if (row.verified_at) return "verified, awaiting your decision";
   if (row.approved_plan_version) return `plan v${row.approved_plan_version} approved`;
-  return "uploaded, no plan approved yet";
+  // A draft cannot be resumed: the wizard resets on mount, and no API returns
+  // a half-finished migration to it. Saying so is kinder than a row that
+  // simply refuses to open and leaves the operator guessing.
+  return "draft · restart required";
 }
 
 export default function OverviewPage() {
@@ -89,7 +113,7 @@ export default function OverviewPage() {
       <main className="mx-auto w-full max-w-5xl px-5 py-8 sm:px-7">
         <PageHeading
           title="Overview"
-          description="Every figure here is read from the backend. Nothing on this page is computed in the browser."
+          description="Every figure here is derived from backend migration records. No synthetic metrics are shown."
           action={
             <Link
               href={routes.newMigration}
@@ -103,18 +127,45 @@ export default function OverviewPage() {
 
         {migrations.length > 0 && (
           <section aria-label="Workspace summary" className="mb-8">
-            <div className="grid grid-cols-2 divide-line rounded-card border border-line bg-surface sm:grid-cols-4 sm:divide-x">
+            <div className="grid grid-cols-2 divide-line panel sm:grid-cols-4 sm:divide-x">
               {[
-                { label: "Migrations", value: counts.total, tone: "text-ink" },
-                { label: "Awaiting a decision", value: counts.awaiting, tone: "text-warn" },
-                { label: "Committed", value: counts.committed, tone: "text-ok" },
-                { label: "No plan yet", value: counts.draft, tone: "text-ink-soft" },
+                {
+                  label: "Migrations",
+                  value: counts.total,
+                  tone: "text-ink",
+                  hint: "uploads on record",
+                },
+                {
+                  label: "No plan yet",
+                  value: counts.draft,
+                  tone: "text-ink-soft",
+                  hint: "nothing approved",
+                },
+                {
+                  label: "Awaiting a decision",
+                  value: counts.awaiting,
+                  tone: "text-warn",
+                  hint: "verified, not committed",
+                },
+                {
+                  label: "Committed",
+                  value: counts.committed,
+                  tone: "text-ok",
+                  hint: "written with evidence",
+                },
+                // Ordered along the lifecycle rather than by importance, so the
+                // row reads as a workflow instead of a metrics strip.
               ].map((stat) => (
                 <div key={stat.label} className="px-5 py-4">
-                  <p className={`font-mono text-[1.75rem] font-semibold leading-none ${stat.tone}`}>
+                  <p
+                    className={`font-mono text-[1.9rem] font-semibold leading-none tabular-nums ${stat.tone}`}
+                  >
                     {stat.value}
                   </p>
-                  <p className="mt-2 text-xs text-ink-soft">{stat.label}</p>
+                  <p className="mt-2 text-xs font-semibold">{stat.label}</p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-ink-soft">
+                    {stat.hint}
+                  </p>
                 </div>
               ))}
             </div>
@@ -188,7 +239,7 @@ export default function OverviewPage() {
               action={{ label: "Start a migration", href: routes.newMigration }}
             />
           ) : (
-            <div className="overflow-hidden rounded-card border border-line bg-surface">
+            <div className="panel overflow-hidden">
               {migrations.map((row, index) => {
                 // A draft has no screen of its own to open. It used to link to
                 // the wizard, which resets on mount, so the row looked like it
@@ -196,17 +247,47 @@ export default function OverviewPage() {
                 // approved plan there is nothing to navigate to, so the row
                 // stays put and the actions menu carries the only thing you
                 // can actually do with it.
-                const destination = row.verified_at
-                  ? routes.verification(row.id)
-                  : row.approved_plan_version
-                    ? routes.run(row.id)
-                    : null;
+                // A committed migration opens its evidence report rather than
+                // an earlier lifecycle screen, which is the thing an operator
+                // actually wants from a finished migration.
+                const destination = row.committed_at
+                  ? routes.report(row.id)
+                  : row.verified_at
+                    ? routes.verification(row.id)
+                    : row.approved_plan_version
+                      ? routes.run(row.id)
+                      : null;
+
+                const next = nextAction(row);
 
                 const summary = (
                   <>
                     <p className="truncate text-sm font-medium">{row.filename}</p>
                     <p className="mt-1 truncate font-mono text-xs text-ink-soft">
-                      {row.id.slice(0, 8)} · {row.destination_profile ?? "customers_v1"} · {row.row_count} rows · {stateLabel(row)}
+                      {row.id.slice(0, 8)} ·{" "}
+                      {row.destination_profile ?? "customers_v1"} · {row.row_count}{" "}
+                      rows · {stateLabel(row)}
+                    </p>
+                    <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                      <span
+                        className={
+                          next.evidence === "Evidence available"
+                            ? "font-semibold text-ok"
+                            : "text-ink-soft"
+                        }
+                      >
+                        {next.evidence}
+                      </span>
+                      <span className="text-line" aria-hidden>
+                        ·
+                      </span>
+                      <span
+                        className={
+                          destination ? "font-semibold text-brand" : "text-ink-soft"
+                        }
+                      >
+                        {next.label}
+                      </span>
                     </p>
                   </>
                 );
@@ -255,8 +336,8 @@ export default function OverviewPage() {
                           setActionError(null);
                           setNotice(
                             rowsRemoved === null
-                              ? `Deleted ${row.filename}.`
-                              : `Rolled back ${rowsRemoved} row(s) and deleted ${row.filename}.`
+                              ? `Deleted ${row.filename}. Its migration record is gone; no destination rows were written by it.`
+                              : `Rollback complete. ${rowsRemoved} destination row(s) removed, and the migration record for ${row.filename} was then deleted.`
                           );
                           void refreshMigrations();
                         }}

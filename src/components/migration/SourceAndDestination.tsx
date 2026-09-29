@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Stepper } from "@/components/ui/Stepper";
 import { WizardActions } from "./WizardActions";
+import { DemoLibrary } from "./DemoLibrary";
 import { api } from "@/data/api";
 import type {
   ApiDestinationProfile,
@@ -178,6 +179,9 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
   // an upload would record. Uploading before then is how an operator ends up
   // with robotics selected and a customer migration created.
   const [profilesReady, setProfilesReady] = useState(false);
+  // Two ways in, stated as a choice rather than a demo link hidden under an
+  // upload box. Neither is a shortcut: both end at the same endpoint.
+  const [entry, setEntry] = useState<"upload" | "demo">("upload");
   const [preview, setPreview] = useState<ApiPreview | null>(null);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -254,6 +258,72 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
       {/* The dropzone is the only thing on screen until a file lands, so it
           carries the weight: a layered surface, a real target area, and the
           formats stated where they are needed rather than in a footnote. */}
+      {/* One file per migration, and the reason said once, where the
+          decision is made. */}
+      <div className="mb-6 flex items-start gap-2.5 rounded-card border border-line bg-muted/40 px-4 py-3 text-[13px] leading-relaxed text-ink-soft">
+        <ShieldCheck size={15} className="mt-0.5 shrink-0" aria-hidden />
+        <span>
+          One source file per migration. Keeping them separate is what makes
+          execution, verification, evidence and rollback isolated and auditable:
+          every row committed can be traced to one upload, and rolling back
+          removes exactly those rows.
+        </span>
+      </div>
+
+      <div
+        className="mb-6 grid gap-2.5 sm:grid-cols-2"
+        role="group"
+        aria-label="How to start"
+      >
+        {[
+          {
+            key: "upload" as const,
+            title: "Upload your own file",
+            body: "A CSV, TSV, XLSX or XLSM from your machine, up to 25 MB.",
+            Icon: Upload,
+          },
+          {
+            key: "demo" as const,
+            title: "Try demo data",
+            body: "Real tracked fixtures, run through the identical pipeline.",
+            Icon: Bot,
+          },
+        ].map((option) => {
+          const active = entry === option.key;
+          return (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => setEntry(option.key)}
+              aria-pressed={active}
+              disabled={migrationId !== null}
+              className={[
+                "rounded-card border p-4 text-left",
+                "transition-[border-color,background-color,box-shadow] duration-200",
+                active
+                  ? "border-brand bg-brand-soft shadow-sm ring-1 ring-brand/20"
+                  : "border-line bg-surface hover:border-brand/40 hover:bg-muted/50",
+                migrationId !== null ? "cursor-not-allowed opacity-60" : "",
+              ].join(" ")}
+            >
+              <span
+                className={[
+                  "mb-2 flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
+                  active ? "bg-brand text-on-brand" : "bg-muted text-ink-soft",
+                ].join(" ")}
+                aria-hidden
+              >
+                <option.Icon size={16} />
+              </span>
+              <span className="block text-[13px] font-semibold">{option.title}</span>
+              <span className="mt-1 block text-xs leading-relaxed text-ink-soft">
+                {option.body}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       <ProfilePicker
         profiles={profiles}
         selected={destinationProfile}
@@ -261,6 +331,18 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
         locked={migrationId !== null}
       />
 
+      {entry === "demo" && !migrationId ? (
+        <DemoLibrary
+          availableProfiles={profiles.map((profile) => profile.id)}
+          disabled={!profilesReady || busy !== null}
+          onUse={async (file, profile) => {
+            // Identical to a dragged file: same store action, same endpoint.
+            // The dataset names its destination, so the picker follows it.
+            setDestinationProfile(profile);
+            await uploadFile(file, profile);
+          }}
+        />
+      ) : (
       <div
         onDragOver={(event: DragEvent<HTMLDivElement>) => {
           event.preventDefault();
@@ -326,6 +408,7 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
           <TrustNote icon={Lock}>Nothing is written to the destination yet</TrustNote>
         </div>
       </div>
+      )}
 
       {uploading && (
         <p className="mt-4 flex items-center gap-2 text-sm text-ink-soft" role="status">
