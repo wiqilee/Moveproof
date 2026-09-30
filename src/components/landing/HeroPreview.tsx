@@ -86,8 +86,12 @@ export function HeroPreview() {
         </p>
       </div>
 
-      <div className="grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-        <ul className="border-b border-line sm:border-b-0 sm:border-r" role="tablist" aria-label="Verified fields">
+      <div>
+        <ul
+          className="grid border-b border-line sm:grid-cols-2 lg:grid-cols-4"
+          role="tablist"
+          aria-label="Verified fields"
+        >
           {FIELDS.map((entry, index) => {
             const active = index === selected;
             const entryStyle = outcomeStyles[entry.outcome];
@@ -98,7 +102,8 @@ export function HeroPreview() {
                   aria-selected={active}
                   onClick={() => setSelected(index)}
                   className={[
-                    "flex w-full items-center gap-2.5 border-l-2 px-4 py-3 text-left transition-colors duration-150",
+                    "flex h-full w-full items-center gap-2.5 border-b-2 px-4 py-3 text-left",
+                    "transition-colors duration-150",
                     active ? "border-brand bg-brand-soft/50" : "border-transparent hover:bg-muted/60",
                   ].join(" ")}
                 >
@@ -116,7 +121,7 @@ export function HeroPreview() {
           })}
         </ul>
 
-        <div className="p-4 sm:p-5">
+        <div className="p-4 sm:p-5 lg:px-6">
           <p className={`flex items-center gap-1.5 text-[11px] font-semibold ${style.text}`}>
             <style.Icon size={13} aria-hidden />
             {style.label}
@@ -125,7 +130,7 @@ export function HeroPreview() {
           {/* Four stations, so the value's journey is legible rather than a
               before and after pair. The rail between them is the same device
               the workflow pipeline uses elsewhere on the page. */}
-          <ol className="mt-4">
+          <ol className="mt-4 lg:grid lg:grid-cols-2 lg:gap-x-8">
             {[
               {
                 label: "Source",
@@ -166,7 +171,7 @@ export function HeroPreview() {
             ].map((station, index, all) => (
               <li key={station.label} className="relative flex gap-3 pb-3 last:pb-0">
                 {index < all.length - 1 && (
-                  <span className="absolute left-[5px] top-3 h-full w-px bg-line" aria-hidden />
+                  <span className="absolute left-[5px] top-3 h-full w-px bg-line lg:hidden" aria-hidden />
                 )}
                 <span
                   className={[

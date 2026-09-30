@@ -53,6 +53,45 @@ export function Hero() {
             <p className="mt-6 text-xs leading-relaxed text-ink-soft">
   The preview on this page is a synthetic customer migration. The same verification-first workflow also supports the robot calibration destination contract; live migrations use the deployed backend, database, verifier, and configured model routing.
 </p>
+
+            {/* A quiet annotation, not a second card. It fills the space
+                opposite the lower preview and states the four kinds of damage
+                the product actually checks for, each of which the preview can
+                demonstrate. A hairline rule rather than a border, so it reads
+                as a margin note beside the interactive panel. */}
+            <div className="mt-12 border-l border-line pl-5 lg:mt-16">
+              <p className="eyebrow">What can silently change</p>
+              <p className="mt-2 max-w-sm text-xs leading-relaxed text-ink-soft">
+                Each of these passes an ordinary import without an error.
+              </p>
+              <dl className="mt-4 grid gap-x-8 gap-y-3 sm:grid-cols-2">
+                {[
+                  {
+                    label: "Leading-zero identifiers",
+                    value: "00127 → 127",
+                  },
+                  {
+                    label: "Date interpretation",
+                    value: "03/04/2026 → ambiguous",
+                  },
+                  {
+                    label: "Decimal conventions",
+                    value: "1,250.00 / 1250,00",
+                  },
+                  {
+                    label: "Text normalization",
+                    value: "whitespace, exact text",
+                  },
+                ].map((item) => (
+                  <div key={item.label} className="min-w-0">
+                    <dt className="text-[13px] font-medium">{item.label}</dt>
+                    <dd className="mt-0.5 font-mono text-[12px] text-ink-soft">
+                      {item.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
           </div>
 
           <div className="space-y-6">

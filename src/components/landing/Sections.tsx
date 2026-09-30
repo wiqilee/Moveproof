@@ -329,29 +329,30 @@ export function Technology() {
   return (
     <section id="technology" className="border-b border-line">
       <div className="mx-auto max-w-6xl px-5 py-20 sm:px-6">
-        <div className="grid items-start gap-12 lg:grid-cols-[minmax(0,45fr)_minmax(0,55fr)] lg:gap-14">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
-              Technology
-            </p>
-            <h2 className="mt-4 text-3xl font-semibold leading-tight tracking-[-0.02em] sm:text-[2.5rem]">
+        <div className="grid items-start gap-12 lg:grid-cols-[minmax(0,43fr)_minmax(0,57fr)] lg:gap-12">
+          {/* One panel for the whole narrative, not one per paragraph. It
+              gives the prose the same surface as the authority path beside it,
+              so neither column looks like it simply stopped. */}
+          <div className="panel p-6 sm:p-7">
+            <p className="eyebrow">Technology</p>
+            <h2 className="mt-3 text-3xl font-semibold leading-tight tracking-[-0.02em] sm:text-[2.5rem]">
               AI proposes.
             <br />
               Validated code executes.
             </h2>
-            <p className="mt-6 max-w-[560px] text-[15px] leading-relaxed text-ink-soft">
+            <p className="mt-6 text-[15px] leading-relaxed text-ink-soft">
               The architecture treats model output as untrusted input. Destination profiles are
               resolved through a server-side registry, proposals are validated against an allowlist
               of supported operations, execution follows the exact approved contract in isolated
               staging, and an independent verifier checks the result before commit is allowed.
             </p>
-            <p className="mt-5 max-w-[560px] text-[15px] leading-relaxed text-ink-soft">
+            <p className="mt-5 text-[15px] leading-relaxed text-ink-soft">
   Model-assisted reasoning runs through Nebius Token Factory. Nemotron 3 Super
   handles the initial planning pass, while deterministic validation can selectively
   escalate harder cases to Nemotron 3 Ultra. Both passes use the same bounded context:
   a schema summary and a small sample of rows. Full datasets are never sent to either model.
 </p>
-            <p className="mt-5 max-w-[560px] text-[15px] leading-relaxed text-ink-soft">
+            <p className="mt-5 text-[15px] leading-relaxed text-ink-soft">
               The same deterministic execution and independent verification path serves
               <span className="font-mono text-[13px]"> customers_v1</span> and
               <span className="font-mono text-[13px]"> robot_calibration_v1</span>. The robotics
@@ -423,7 +424,9 @@ export function Technology() {
             </div>
 
 
-            <div className="panel px-5 py-4">
+
+
+            <div className="panel px-5 py-4 transition-[transform,box-shadow,border-color] duration-200 hover:border-brand/40 motion-safe:hover:-translate-y-1">
               <p className="eyebrow">Infrastructure</p>
               <ul className="mt-2.5 flex flex-wrap gap-1.5">
                 {[
@@ -437,20 +440,21 @@ export function Technology() {
                 ].map((item) => (
                   <li
                     key={item}
-                    className="rounded-full border border-line px-2 py-0.5 font-mono text-[11px] text-ink-soft"
+                    className="rounded-full border border-line px-2 py-0.5 font-mono text-[11px] text-ink-soft transition-[color,border-color,background-color,transform] duration-200 hover:border-brand/50 hover:bg-brand-soft hover:text-brand motion-safe:hover:scale-[1.02]"
                   >
                     {item}
                   </li>
                 ))}
               </ul>
             </div>
-
-
-            <div className="panel p-5">
+            <div className="panel p-5 transition-[transform,box-shadow,border-color] duration-200 hover:border-brand/40 motion-safe:hover:-translate-y-1">
             <h3 className="text-sm font-semibold">What is running in this build</h3>
             <ul className="mt-4 grid gap-2.5 xl:grid-cols-2 xl:gap-x-6">
               {live.map((item) => (
-                <li key={item.label} className="flex items-start gap-2.5 text-sm">
+                <li
+                  key={item.label}
+                  className="group/row -mx-2 flex items-start gap-2.5 rounded-control px-2 py-1 text-sm text-ink-soft transition-[background-color,color,transform] duration-200 hover:bg-muted/60 hover:text-ink motion-safe:hover:translate-x-0.5"
+                >
                   <Check size={15} className="mt-0.5 shrink-0 text-ok" aria-hidden />
                   <span>{item.label}</span>
                 </li>
@@ -479,9 +483,9 @@ export function Technology() {
           </div>
         </div>
 
-        {/* The build list spans the section. Infrastructure went back beside
-            the authority path, where it fills the space the long narrative
-            would otherwise leave empty on the right. */}
+
+        {/* Row two: a matched pair, same radius, border and elevation as row
+            one, aligned at the top so neither trails a gap under the other. */}
       </div>
     </section>
   );
