@@ -496,8 +496,16 @@ export function Technology() {
             Infrastructure is a compact full-width rail rather than a column
             beside the much longer capability list, which is what made the two
             look unbalanced side by side. */}
-        <div className="panel-flat mt-9 px-5 py-4">
-            <p className="eyebrow">Infrastructure</p>
+        {/* One implementation surface. Two independent cards, one short and
+            one long, read as leftovers placed where space allowed; sharing a
+            border, a radius and a divider makes them one production stack.
+            The disclaimer belongs to the whole band, so it spans it. */}
+        <div className="panel-flat mt-8 overflow-hidden">
+          <div className="grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+            <div className="border-b border-line px-5 py-5 lg:border-b-0 lg:border-r">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink">
+              Infrastructure
+            </p>
             <ul className="mt-2.5 flex flex-wrap gap-1.5">
               {[
                 "Next.js / Vercel",
@@ -516,11 +524,10 @@ export function Technology() {
                 </li>
               ))}
             </ul>
-                                                          </div>
-
-        <div className="panel-flat mt-4 px-5 py-5">
+            </div>
+            <div className="px-5 py-5">
         <h3 className="text-sm font-semibold">What is running in this build</h3>
-        <ul className="mt-4 grid gap-2.5 lg:grid-cols-2 lg:gap-x-10">
+        <ul className="mt-3 grid gap-2.5 xl:grid-cols-2 xl:gap-x-8">
           {live.map((item) => (
             <li
               key={item.label}
@@ -545,12 +552,13 @@ export function Technology() {
     </ul>
   </>
 )}
-
-        <p className="mt-6 border-t border-line pt-4 text-xs leading-relaxed text-ink-soft">
-          Nebius and NVIDIA are named to describe technologies used by MoveProof. Neither company
-          endorses this project.
-        </p>
-                                                        </div>
+            </div>
+          </div>
+          <p className="border-t border-line px-5 py-3.5 text-xs leading-relaxed text-ink-soft">
+            Nebius and NVIDIA are named to describe technologies used by MoveProof. Neither company
+            endorses this project.
+          </p>
+        </div>
 
         {/* Row two, spanning both columns. Keeping it inside the right stack
             made the grid row as tall as that stack, which left a hole under
@@ -588,7 +596,15 @@ export function ClosingCta() {
         {/* on-navy at 60% sat below the contrast floor on the dark canvas.
             80% stays clearly subordinate to the heading while remaining
             readable in both themes. */}
-        <p className="eyebrow mb-4 text-on-navy/80">Evidence, not assurance</p>
+        {/* The .eyebrow class is declared after @tailwind utilities in
+            globals.css, so at equal specificity its own colour wins and a
+            text-* utility beside it is ignored. That is why the earlier
+            contrast change here had no visible effect. The type is spelled
+            out instead, which puts the colour under this element's control
+            without touching the shared class. */}
+        <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.1em] text-on-navy/90">
+        Verification evidence
+        </p>
         <h2 className="text-3xl font-semibold tracking-[-0.02em] sm:text-[2.5rem]">
           See what your migration actually changed.
         </h2>

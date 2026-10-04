@@ -21,9 +21,10 @@ import { CalibrationRigFallback } from "./CalibrationRigFallback";
  * never arrives nothing is missing.
  */
 
+// No loading element: the fallback below the canvas is the loading state, and
+// swapping one illustration for another is exactly the flash being removed.
 const CalibrationRig3D = dynamic(() => import("./CalibrationRig3D"), {
   ssr: false,
-  loading: () => <CalibrationRigFallback />,
 });
 
 /** Does this browser actually have a WebGL context to give us? */
@@ -53,6 +54,9 @@ export function CalibrationRig({ className = "" }: { className?: string }) {
   const [mode, setMode] = useState<"static" | "webgl">("static");
   const [animate, setAnimate] = useState(false);
   const [stage, setStage] = useState(0);
+  // Flipped by the canvas once its context exists, which is when there is
+  // something real to fade up to.
+  const [sceneReady, setSceneReady] = useState(false);
 
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -80,8 +84,29 @@ export function CalibrationRig({ className = "" }: { className?: string }) {
       <div className="relative overflow-hidden rounded-card border border-line bg-gradient-to-b from-surface to-canvas">
         {/* Shorter on a phone, so the scene never crowds the copy above it.
             The camera framing keeps the whole arm visible at every height. */}
-        <div className="h-[280px] sm:h-[340px] lg:h-[400px]">
-          <CalibrationRig3D animate={animate} />
+        {/* The fallback stays mounted underneath and the canvas fades in over
+            it. Both occupy the same box, so nothing reflows and the area is
+            never blank: one scene becomes interactive rather than two
+            illustrations trading places. */}
+        <div className="relative h-[280px] sm:h-[340px] lg:h-[400px]">
+          <div
+            aria-hidden={sceneReady}
+            className={[
+              "absolute inset-0 transition-opacity duration-500",
+              sceneReady ? "opacity-0" : "opacity-100",
+            ].join(" ")}
+          >
+            <CalibrationRigFallback bare className="h-full" />
+          </div>
+
+          <div
+            className={[
+              "absolute inset-0 transition-opacity duration-500",
+              sceneReady ? "opacity-100" : "opacity-0",
+            ].join(" ")}
+          >
+            <CalibrationRig3D animate={animate} onReady={() => setSceneReady(true)} />
+          </div>
         </div>
 
         {/* Annotations live in the DOM rather than in the scene: real text,

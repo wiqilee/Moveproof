@@ -47,7 +47,18 @@ const JOINTS = [
   { name: "wrist", x: 296, y: 92, r: 10 },
 ];
 
-export function CalibrationRigFallback({ className = "" }: { className?: string }) {
+export function CalibrationRigFallback({
+  className = "",
+  /**
+   * `bare` drops the card chrome and the stage pills and renders only the
+   * scene. The wrapper uses it as the layer beneath the WebGL canvas, which
+   * already supplies both, so neither is drawn twice during the crossfade.
+   */
+  bare = false,
+}: {
+  className?: string;
+  bare?: boolean;
+}) {
   const [stage, setStage] = useState(0);
   const [animate, setAnimate] = useState(false);
 
@@ -65,7 +76,12 @@ export function CalibrationRigFallback({ className = "" }: { className?: string 
   return (
     <div className={className}>
       <div
-        className="relative w-full overflow-hidden rounded-card border border-line bg-gradient-to-b from-surface to-canvas"
+        className={[
+          "relative w-full overflow-hidden",
+          bare
+            ? "h-full"
+            : "rounded-card border border-line bg-gradient-to-b from-surface to-canvas",
+        ].join(" ")}
         style={{ perspective: "1100px", perspectiveOrigin: "50% 38%" }}
       >
         {/* The measurement floor: a real plane laid back in space, so its grid
@@ -287,6 +303,7 @@ export function CalibrationRigFallback({ className = "" }: { className?: string 
         </div>
       </div>
 
+      {!bare && (
       <ol className="mt-4 flex flex-wrap gap-1.5">
         {STAGES.map((label, index) => (
           <li
@@ -302,6 +319,7 @@ export function CalibrationRigFallback({ className = "" }: { className?: string 
           </li>
         ))}
       </ol>
+      )}
     </div>
   );
 }

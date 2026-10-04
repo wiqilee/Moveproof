@@ -60,10 +60,22 @@ function CoordinateFrame({ size = 0.32 }: { size?: number }) {
 function Joint({
   radius,
   ring,
+  animate = false,
+  phase = 0,
 }: {
   radius: number;
   ring?: number;
+  animate?: boolean;
+  phase?: number;
 }) {
+  const ringRef = useRef<THREE.Mesh>(null);
+
+  useFrame(({ clock }) => {
+    if (!animate || !ringRef.current) return;
+    // A slow sweep of the calibration arc. The joint itself never moves.
+    ringRef.current.rotation.z = clock.getElapsedTime() * 0.12 + phase;
+  });
+
   return (
     <group>
       <mesh castShadow receiveShadow>
@@ -71,7 +83,7 @@ function Joint({
         <meshStandardMaterial color="#1e293b" metalness={0.55} roughness={0.35} />
       </mesh>
       {ring !== undefined && (
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
           <torusGeometry args={[ring, 0.012, 12, 64, Math.PI * 1.35]} />
           <meshBasicMaterial color="#3b82f6" transparent opacity={0.55} />
         </mesh>
@@ -179,15 +191,15 @@ function Rig({ animate }: { animate: boolean }) {
       {/* Shoulder → upper arm → elbow → forearm → wrist → sensor frame.
           Nested groups, so the chain stays coherent. */}
       <group position={[0, 1.05, 0]}>
-        <Joint radius={0.2} ring={0.34} />
+        <Joint radius={0.2} ring={0.34} animate={animate} phase={0} />
         <group rotation={[0, 0, Math.PI / 5.2]}>
           <Link length={1.33} radius={0.12} />
           <group position={[1.33, 0, 0]}>
-            <Joint radius={0.16} ring={0.28} />
+            <Joint radius={0.16} ring={0.28} animate={animate} phase={1.1} />
             <group rotation={[0, 0, -Math.PI / 7.5]}>
               <Link length={0.99} radius={0.095} />
               <group position={[0.99, 0, 0]}>
-                <Joint radius={0.12} ring={0.21} />
+                <Joint radius={0.12} ring={0.21} animate={animate} phase={2.2} />
                 <group rotation={[0, 0, Math.PI / 12]}>
                   <Link length={0.42} radius={0.06} />
                   {/* End effector: the sensor frame the record names. */}
@@ -216,7 +228,14 @@ function Rig({ animate }: { animate: boolean }) {
   );
 }
 
-export default function CalibrationRig3D({ animate }: { animate: boolean }) {
+export default function CalibrationRig3D({
+  animate,
+  onReady,
+}: {
+  animate: boolean;
+  /** Fired once the context exists, so the wrapper can fade this in. */
+  onReady?: () => void;
+}) {
   return (
     <Canvas
       // Capped device pixel ratio: this is a decorative scene and has no
@@ -228,6 +247,7 @@ export default function CalibrationRig3D({ animate }: { animate: boolean }) {
       // the time when motion is off.
       frameloop={animate ? "always" : "demand"}
       gl={{ antialias: true, powerPreference: "low-power" }}
+      onCreated={() => onReady?.()}
       style={{ width: "100%", height: "100%" }}
     >
       <color attach="background" args={["#00000000"]} />

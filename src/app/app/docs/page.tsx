@@ -82,7 +82,12 @@ function Callout({
     <div
       className={[
         "rounded-card border px-4 py-3.5",
-        tone === "warn" ? "border-warn/30 bg-warn-soft/50" : "border-line bg-muted/40",
+        // border-line all but vanishes against a muted fill. A tinted ink
+        // border holds in both themes and still stays quieter than an
+        // interactive card.
+        tone === "warn"
+          ? "border-warn/30 bg-warn-soft/50"
+          : "border-ink-soft/30 bg-muted/40",
       ].join(" ")}
     >
       <p
