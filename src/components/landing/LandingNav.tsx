@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Logo } from "@/components/ui/Logo";
 import { GitHubIcon } from "./SocialIcons";
@@ -12,7 +15,78 @@ const sections = [
   { label: "Technology", href: "#technology" },
 ];
 
+/**
+ * Which section the reader has reached.
+ *
+ * The nav had no active state at all, which is why it never corresponded to
+ * what was on screen. The rule is positional and deterministic: the active
+ * section is the last heading whose top has crossed an activation line sitting
+ * just under the floating bar. Scrolling past a section always advances it,
+ * and only one heading can be the last to have crossed, so it cannot
+ * oscillate between two while scrolling slowly.
+ *
+ * The line is expressed in viewport units plus the bar's own height rather
+ * than a pixel constant tied to one screen size.
+ *
+ * Nothing is active while the reader is still in the hero, above the first
+ * section. That is correct: the hero and the field preview belong to no nav
+ * item, and highlighting one anyway would be a guess.
+ */
+const NAV_BAR_HEIGHT = 72; // 56px bar plus its 12 to 16px inset
+const BOTTOM_TOLERANCE = 24;
+
+function useActiveSection(hrefs: string[]): string | null {
+  const [active, setActive] = useState<string | null>(null);
+
+  useEffect(() => {
+    let frame = 0;
+
+    const measure = () => {
+      frame = 0;
+      const line = NAV_BAR_HEIGHT + window.innerHeight * 0.18;
+
+      // At the very bottom the last section is the one being read, even if it
+      // is too short to reach the line.
+      const atBottom =
+        window.innerHeight + window.scrollY >=
+        document.documentElement.scrollHeight - BOTTOM_TOLERANCE;
+      if (atBottom) {
+        setActive(hrefs[hrefs.length - 1] ?? null);
+        return;
+      }
+
+      let current: string | null = null;
+      for (const href of hrefs) {
+        const element = document.getElementById(href.slice(1));
+        if (!element) continue;
+        if (element.getBoundingClientRect().top <= line) current = href;
+        else break; // sections are in document order
+      }
+      setActive(current);
+    };
+
+    const onScroll = () => {
+      if (frame === 0) frame = window.requestAnimationFrame(measure);
+    };
+
+    measure();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      if (frame !== 0) window.cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [hrefs]);
+
+  return active;
+}
+
+const NAV_HREFS = sections.map((section) => section.href);
+
 export function LandingNav() {
+  const active = useActiveSection(NAV_HREFS);
+
   return (
     // Translucent and taller, with the hairline only at the very bottom, so
     // the bar reads as the page's own edge rather than a separate strip.
@@ -28,7 +102,13 @@ export function LandingNav() {
             <a
               key={section.href}
               href={section.href}
-              className="rounded-control px-3 py-2 text-[13px] text-ink-soft transition-colors hover:bg-muted hover:text-ink"
+              aria-current={active === section.href ? "location" : undefined}
+              className={[
+                "rounded-control px-3 py-2 text-[13px] transition-colors",
+                active === section.href
+                  ? "bg-muted font-semibold text-ink"
+                  : "text-ink-soft hover:bg-muted hover:text-ink",
+              ].join(" ")}
             >
               {section.label}
             </a>

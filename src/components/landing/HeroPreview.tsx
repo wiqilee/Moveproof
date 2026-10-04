@@ -72,8 +72,24 @@ const outcomeStyles: Record<Outcome, { dot: string; label: string; text: string;
   passed: { dot: "bg-ok", label: "Passed", text: "text-ok", Icon: CheckCircle2 },
 };
 
-export function HeroPreview() {
-  const [selected, setSelected] = useState(0);
+/** The columns, in the order the preview lists them. Exported so the hero's
+ *  annotation can point at a field by name rather than by index. */
+export const PREVIEW_COLUMNS = FIELDS.map((entry) => entry.column);
+
+export function HeroPreview({
+  selected: controlled,
+  onSelect,
+}: {
+  /** Optional controlled selection, so another block can drive this one. */
+  selected?: number;
+  onSelect?: (index: number) => void;
+} = {}) {
+  const [internal, setInternal] = useState(0);
+  const selected = controlled ?? internal;
+  const select = (index: number) => {
+    setInternal(index);
+    onSelect?.(index);
+  };
   const field = FIELDS[selected];
   const style = outcomeStyles[field.outcome];
 
@@ -100,7 +116,7 @@ export function HeroPreview() {
                 <button
                   role="tab"
                   aria-selected={active}
-                  onClick={() => setSelected(index)}
+                  onClick={() => select(index)}
                   className={[
                     "flex h-full w-full items-center gap-2.5 border-b-2 px-4 py-3 text-left",
                     "transition-colors duration-150",

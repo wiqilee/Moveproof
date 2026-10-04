@@ -1,10 +1,29 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { HeroPreview } from "./HeroPreview";
 import { CalibrationRig } from "./CalibrationRig";
 import { routes } from "@/lib/routes";
 
+/**
+ * Each example beside the field it happens to, in the preview's own order.
+ * The mapping is by index into PREVIEW_COLUMNS, so a field added there without
+ * one here would fail the length check below rather than mislabel a row.
+ */
+const SILENT_CHANGES = [
+  { label: "Leading-zero identifiers", value: "00127 → 127" },
+  { label: "Date interpretation", value: "03/04/2026 → ambiguous" },
+  { label: "Decimal conventions", value: "1,250.00 / 1250,00" },
+  { label: "Text normalization", value: "whitespace, exact text" },
+];
+
 export function Hero() {
+  // One selection shared by the annotation and the preview. Nothing here
+  // touches migration data; this is the synthetic landing demonstration.
+  const [field, setField] = useState(0);
+
   return (
     <section className="border-b border-line">
       {/* The floating nav already reserves its own space above, so the old
@@ -65,31 +84,43 @@ export function Hero() {
                 Each of these passes an ordinary import without an error.
               </p>
               <dl className="mt-4 grid gap-x-8 gap-y-3 sm:grid-cols-2">
-                {[
-                  {
-                    label: "Leading-zero identifiers",
-                    value: "00127 → 127",
-                  },
-                  {
-                    label: "Date interpretation",
-                    value: "03/04/2026 → ambiguous",
-                  },
-                  {
-                    label: "Decimal conventions",
-                    value: "1,250.00 / 1250,00",
-                  },
-                  {
-                    label: "Text normalization",
-                    value: "whitespace, exact text",
-                  },
-                ].map((item) => (
-                  <div key={item.label} className="min-w-0">
-                    <dt className="text-[13px] font-medium">{item.label}</dt>
-                    <dd className="mt-0.5 font-mono text-[12px] text-ink-soft">
-                      {item.value}
-                    </dd>
-                  </div>
-                ))}
+                {SILENT_CHANGES.map((item, index) => {
+                  const active = field === index;
+                  return (
+                    <div key={item.label} className="min-w-0">
+                      {/* A real button: the annotation selects the matching
+                          field in the preview, so this works by tap and by
+                          keyboard, not only by pointer. */}
+                      <button
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setField(index)}
+                        onMouseEnter={() => setField(index)}
+                        className={[
+                          "-mx-2 block w-full rounded-control px-2 py-1.5 text-left",
+                          "transition-[transform,background-color,box-shadow] duration-200",
+                          active ? "bg-brand-soft/60" : "hover:bg-muted/50",
+                          "motion-safe:hover:-translate-y-0.5",
+                        ].join(" ")}
+                      >
+                        <dt
+                          className={`text-[13px] font-medium transition-colors ${
+                            active ? "text-brand" : ""
+                          }`}
+                        >
+                          {item.label}
+                        </dt>
+                        <dd
+                          className={`mt-0.5 font-mono text-[12px] transition-colors ${
+                            active ? "text-brand" : "text-ink-soft"
+                          }`}
+                        >
+                          {item.value}
+                        </dd>
+                      </button>
+                    </div>
+                  );
+                })}
               </dl>
             </div>
           </div>
@@ -103,7 +134,7 @@ export function Hero() {
               <p className="mb-3 text-xs text-ink-soft">
                 Select a field to see what the migration did to it.
               </p>
-              <HeroPreview />
+              <HeroPreview selected={field} onSelect={setField} />
             </div>
           </div>
         </div>

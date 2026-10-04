@@ -115,7 +115,7 @@ export default function MigrationsPage() {
 
         {migrationsLoading && migrations.length === 0 ? (
           <div
-            className="flex items-center gap-2.5 rounded-card border border-line bg-surface px-5 py-8 text-sm text-ink-soft"
+            className="flex items-center gap-2.5 panel px-5 py-8 text-sm text-ink-soft"
             role="status"
           >
             <Loader2 size={15} className="spin" aria-hidden />
@@ -133,12 +133,12 @@ export default function MigrationsPage() {
             action={term ? undefined : { label: "Start a migration", href: routes.newMigration }}
           />
         ) : (
-          <div className="overflow-hidden rounded-card border border-line bg-surface">
+          <div className="panel overflow-hidden">
             <div className="table-scroll">
-              <table className="w-full min-w-[860px] border-collapse text-sm">
+              <table className="w-full min-w-[980px] border-collapse text-sm">
                 <thead>
                   <tr className="bg-muted/60">
-                    {["Source file", "Destination", "Rows", "Plan", "Latest run", "State", ""].map((header) => (
+                    {["Source file", "Destination", "Rows", "Plan", "Latest run", "Next", "State", ""].map((header) => (
                       <th
                         key={header}
                         scope="col"
@@ -151,11 +151,25 @@ export default function MigrationsPage() {
                 </thead>
                 <tbody>
                   {visible.map((row) => {
-                    const destination = row.verified_at
-                      ? routes.verification(row.id)
-                      : row.approved_plan_version
-                        ? routes.run(row.id)
-                        : null;
+                    const destination = row.committed_at
+                      ? routes.report(row.id)
+                      : row.verified_at
+                        ? routes.verification(row.id)
+                        : row.approved_plan_version
+                          ? routes.run(row.id)
+                          : null;
+
+                    // Every value below already exists on the list payload.
+                    const evidence = row.verified_at
+                      ? "Evidence available"
+                      : "No evidence yet";
+                    const next = row.committed_at
+                      ? "Open evidence"
+                      : row.verified_at
+                        ? "Review and commit"
+                        : row.approved_plan_version
+                          ? "Continue to execution"
+                          : "Restart required";
 
                     return (
                     <tr key={row.id} className="border-t border-line">
@@ -178,6 +192,22 @@ export default function MigrationsPage() {
                           : row.latest_run_id
                             ? "staged, not verified"
                             : "not run"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <p
+                          className={`text-[12px] font-semibold ${
+                            destination ? "text-brand" : "text-ink-soft"
+                          }`}
+                        >
+                          {next}
+                        </p>
+                        <p
+                          className={`mt-0.5 text-[11px] ${
+                            evidence === "Evidence available" ? "text-ok" : "text-ink-soft"
+                          }`}
+                        >
+                          {evidence}
+                        </p>
                       </td>
                       <td className="px-4 py-3">
                         <StatusPill

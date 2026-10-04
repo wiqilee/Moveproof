@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Check, Minus } from "lucide-react";
 import { IMPLEMENTATION_STATUS } from "@/lib/site";
@@ -17,7 +20,7 @@ const FAILURE_MODES = [
 
 export function ProblemSection() {
   return (
-    <section id="problem" className="border-b border-line bg-surface">
+    <section id="problem" className="scroll-mt-28 border-b border-line bg-surface">
       <div className="mx-auto max-w-6xl px-5 py-20 sm:px-6">
         <div className="grid gap-12 lg:grid-cols-[minmax(0,4fr)_minmax(0,5fr)] lg:gap-16">
           <div>
@@ -107,7 +110,7 @@ const STAGES = [
 
 export function HowItWorks() {
   return (
-    <section id="how-it-works" className="border-b border-line">
+    <section id="how-it-works" className="scroll-mt-28 border-b border-line">
       <div className="mx-auto max-w-6xl px-5 py-20 sm:px-6">
         <div className="max-w-2xl">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
@@ -202,9 +205,36 @@ const PRINCIPLES = [
   },
 ];
 
+/**
+ * The four principles, each with the one fact it stands on.
+ *
+ * Every meaning here is already stated elsewhere on this page or in the
+ * product; nothing new is claimed. The four are simultaneously true, which is
+ * why none of them is ever drawn as pending or complete.
+ */
+const OPERATING_MODEL = [
+  { clause: "AI proposes", meaning: "Model output is treated as untrusted input." },
+  {
+    clause: "Validated code executes",
+    meaning: "Only deterministic, validated and approved operations execute.",
+  },
+  {
+    clause: "Independent evidence decides",
+    meaning: "Verification is separate from the planner.",
+  },
+  {
+    clause: "Humans approve ambiguity",
+    meaning: "Ambiguous interpretation requires explicit human choice.",
+  },
+];
+
 export function Approach() {
+  // Hover and tap both set this, so the supporting line is reachable without a
+  // pointer. The buttons are real buttons, so keyboard activation works too.
+  const [principle, setPrinciple] = useState<number | null>(null);
+
   return (
-    <section id="approach" className="border-b border-line bg-surface">
+    <section id="approach" className="scroll-mt-28 border-b border-line bg-surface">
       <div className="mx-auto max-w-6xl px-5 py-16 sm:px-6 sm:py-20">
         <div className="max-w-2xl">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
@@ -221,26 +251,60 @@ export function Approach() {
           </p>
         </div>
 
-        <div className="mt-8 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            "AI proposes",
-            "Validated code executes",
-            "Independent evidence decides",
-            "Humans approve ambiguity",
-          ].map((clause, index) => (
-            <p
-              key={clause}
-              className="panel-flat px-4 py-3 text-[13px] font-semibold tracking-tight"
-            >
-              <span className="mr-2 font-mono text-[11px] font-bold text-brand">
-                {String(index + 1).padStart(2, "0")}
-              </span>
-              {clause}
-            </p>
-          ))}
-        </div>
+        {/* Four principles, all true at once. They are not stages and not the
+            headings of the three rules below, so they get their own label and
+            their own connected rail. */}
+        <p className="eyebrow mt-10">Operating model</p>
+        <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {OPERATING_MODEL.map((item, index) => {
+            const active = principle === index;
+            return (
+              <li key={item.clause} className="group/clause relative">
+                {/* The rail connects the four, and strengthens beside whichever
+                    one the pointer is on. It carries no state of its own. */}
+                {index < OPERATING_MODEL.length - 1 && (
+                  <span
+                    className="absolute right-[-0.5rem] top-1/2 hidden h-px w-2 -translate-y-1/2 bg-line transition-colors duration-200 group-hover/clause:bg-brand lg:block"
+                    aria-hidden
+                  />
+                )}
+                <button
+                  type="button"
+                  aria-expanded={active}
+                  onClick={() => setPrinciple(active ? null : index)}
+                  onMouseEnter={() => setPrinciple(index)}
+                  className={[
+                    "panel-flat h-full w-full px-4 py-3 text-left",
+                    "transition-[transform,border-color,background-color] duration-200",
+                    active
+                      ? "border-brand bg-brand-soft/60"
+                      : "hover:border-brand/40 hover:bg-muted/40",
+                    "motion-safe:hover:-translate-y-0.5",
+                  ].join(" ")}
+                >
+                  <span className="flex items-baseline gap-2">
+                    <span
+                      className={`font-mono text-[11px] font-bold transition-colors ${
+                        active ? "text-brand" : "text-ink-soft"
+                      }`}
+                    >
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <span className="text-[13px] font-semibold tracking-tight">
+                      {item.clause}
+                    </span>
+                  </span>
+                  <span className="mt-1.5 block text-[12px] leading-relaxed text-ink-soft">
+                    {item.meaning}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
 
-        <ol className="mt-4 space-y-2.5">
+        <p className="eyebrow mt-10">Enforced rules</p>
+        <ol className="mt-3 space-y-2.5">
           {PRINCIPLES.map((principle, index) => (
             <li key={principle.title}>
               <article className="group relative rounded-card border border-line bg-canvas/40 transition-colors duration-200 hover:bg-muted/40">
@@ -327,47 +391,51 @@ export function Technology() {
   const planned = IMPLEMENTATION_STATUS.filter((item) => item.state === "planned");
 
   return (
-    <section id="technology" className="border-b border-line">
+    <section id="technology" className="scroll-mt-28 border-b border-line">
       <div className="mx-auto max-w-6xl px-5 py-20 sm:px-6">
-        <div className="grid items-start gap-12 lg:grid-cols-[minmax(0,43fr)_minmax(0,57fr)] lg:gap-12">
-          {/* One panel for the whole narrative, not one per paragraph. It
-              gives the prose the same surface as the authority path beside it,
-              so neither column looks like it simply stopped. */}
-          <div className="panel p-6 sm:p-7">
-            <p className="eyebrow">Technology</p>
-            <h2 className="mt-3 text-3xl font-semibold leading-tight tracking-[-0.02em] sm:text-[2.5rem]">
-              AI proposes.
-            <br />
-              Validated code executes.
-            </h2>
-            <p className="mt-6 text-[15px] leading-relaxed text-ink-soft">
-              The architecture treats model output as untrusted input. Destination profiles are
-              resolved through a server-side registry, proposals are validated against an allowlist
-              of supported operations, execution follows the exact approved contract in isolated
-              staging, and an independent verifier checks the result before commit is allowed.
-            </p>
-            <p className="mt-5 text-[15px] leading-relaxed text-ink-soft">
-  Model-assisted reasoning runs through Nebius Token Factory. Nemotron 3 Super
-  handles the initial planning pass, while deterministic validation can selectively
-  escalate harder cases to Nemotron 3 Ultra. Both passes use the same bounded context:
-  a schema summary and a small sample of rows. Full datasets are never sent to either model.
-</p>
-            <p className="mt-5 text-[15px] leading-relaxed text-ink-soft">
-              The same deterministic execution and independent verification path serves
-              <span className="font-mono text-[13px]"> customers_v1</span> and
-              <span className="font-mono text-[13px]"> robot_calibration_v1</span>. The robotics
-              contract checks migration invariants such as composite row identity, preserved IDs,
-              firmware text, decimals, and approved date interpretation; it does not evaluate robot safety.
-            </p>
-          </div>
+        {/* Four panels as direct grid children, in reading order:
+            narrative, authority path, infrastructure, capabilities.
+            That is the DOM order, so the keyboard and a screen reader
+            follow the same sequence a reader does on a phone; nothing
+            is reordered by CSS alone.
+            At lg the same four fall into two columns and two rows,
+            which is the approved desktop composition, and items-start
+            keeps each panel at its own height. */}
+        {/* Top row: open editorial narrative beside the contained technical
+            panel. Bottom row: the two supporting surfaces on one row, so their
+            top edges align instead of starting at staggered heights.
+            DOM order is the reading order, which is also the stacking order
+            below lg: narrative, authority path, infrastructure, capabilities. */}
+        <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,43fr)_minmax(0,57fr)] lg:gap-12">
+<div>
+              <p className="eyebrow">Technology</p>
+              <h2 className="mt-3 text-3xl font-semibold leading-tight tracking-[-0.02em] sm:text-[2.5rem]">
+                AI proposes.
+              <br />
+                Validated code executes.
+              </h2>
+              <p className="mt-6 text-[15px] leading-relaxed text-ink-soft">
+                The architecture treats model output as untrusted input. Destination profiles are
+                resolved through a server-side registry, proposals are validated against an allowlist
+                of supported operations, execution follows the exact approved contract in isolated
+                staging, and an independent verifier checks the result before commit is allowed.
+              </p>
+              <p className="mt-5 text-[15px] leading-relaxed text-ink-soft">
+    Model-assisted reasoning runs through Nebius Token Factory. Nemotron 3 Super
+    handles the initial planning pass, while deterministic validation can selectively
+    escalate harder cases to Nemotron 3 Ultra. Both passes use the same bounded context:
+    a schema summary and a small sample of rows. Full datasets are never sent to either model.
+  </p>
+              <p className="mt-5 text-[15px] leading-relaxed text-ink-soft">
+                The same deterministic execution and independent verification path serves
+                <span className="font-mono text-[13px]"> customers_v1</span> and
+                <span className="font-mono text-[13px]"> robot_calibration_v1</span>. The robotics
+                contract checks migration invariants such as composite row identity, preserved IDs,
+                firmware text, decimals, and approved date interpretation; it does not evaluate robot safety.
+              </p>
+            </div>
 
-          {/* One independent stack. The right column renders its own panels
-              in sequence rather than waiting for the taller left column to
-              finish, which is what left a blank area beside the copy. */}
-          <div className="space-y-5">
-            {/* The authority path, drawn as a spine. Tavily hangs off it to one
-                side, because advisory context never decides anything. */}
-            <div className="panel p-5">
+<div className="panel p-5 lg:self-center">
               <p className="eyebrow">The authority path</p>
               <ol className="mt-4">
                 {[
@@ -378,7 +446,7 @@ export function Technology() {
                   { step: "Independent verifier", note: "shares no code with the planner" },
                   { step: "Canonical evidence", note: "one object, three renderings" },
                 ].map((item, index, all) => (
-                  <li key={item.step} className="group/step relative flex gap-3 pb-4 last:pb-0">
+                  <li key={item.step} className="group/step relative flex gap-3 pb-5 last:pb-0 sm:pb-6">
                     {/* The spine is blue for its whole length. Every stage in
                         the authority path is part of the architecture, so
                         none of them is drawn as pending: this diagram
@@ -409,7 +477,7 @@ export function Technology() {
               {/* Deliberately grey, deliberately horizontal, deliberately
                   below the spine's end: Tavily branches away from the
                   authority path and never joins it. */}
-              <div className="mt-2 flex items-start gap-3 border-t border-line pt-4">
+              <div className="mt-3 flex items-start gap-3 border-t border-line pt-5 sm:pt-6">
                 <span className="mt-2 h-px w-6 shrink-0 bg-line" aria-hidden />
                 <span className="min-w-0">
                   <span className="block text-[13px] font-semibold text-ink-soft">
@@ -422,66 +490,71 @@ export function Technology() {
                 </span>
               </div>
             </div>
+        </div>
 
-
-
-
-            <div className="panel px-5 py-4 transition-[transform,box-shadow,border-color] duration-200 hover:border-brand/40 motion-safe:hover:-translate-y-1">
-              <p className="eyebrow">Infrastructure</p>
-              <ul className="mt-2.5 flex flex-wrap gap-1.5">
-                {[
-                  "Next.js / Vercel",
-                  "FastAPI",
-                  "Rust verifier",
-                  "Cloud SQL",
-                  "private GCS",
-                  "Nebius Token Factory",
-                  "Tavily",
-                ].map((item) => (
-                  <li
-                    key={item}
-                    className="rounded-full border border-line px-2 py-0.5 font-mono text-[11px] text-ink-soft transition-[color,border-color,background-color,transform] duration-200 hover:border-brand/50 hover:bg-brand-soft hover:text-brand motion-safe:hover:scale-[1.02]"
-                  >
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="panel p-5 transition-[transform,box-shadow,border-color] duration-200 hover:border-brand/40 motion-safe:hover:-translate-y-1">
-            <h3 className="text-sm font-semibold">What is running in this build</h3>
-            <ul className="mt-4 grid gap-2.5 xl:grid-cols-2 xl:gap-x-6">
-              {live.map((item) => (
+        {/* Architecture, then infrastructure, then the running implementation.
+            Infrastructure is a compact full-width rail rather than a column
+            beside the much longer capability list, which is what made the two
+            look unbalanced side by side. */}
+        <div className="panel-flat mt-9 px-5 py-4">
+            <p className="eyebrow">Infrastructure</p>
+            <ul className="mt-2.5 flex flex-wrap gap-1.5">
+              {[
+                "Next.js / Vercel",
+                "FastAPI",
+                "Rust verifier",
+                "Cloud SQL",
+                "private GCS",
+                "Nebius Token Factory",
+                "Tavily",
+              ].map((item) => (
                 <li
-                  key={item.label}
-                  className="group/row -mx-2 flex items-start gap-2.5 rounded-control px-2 py-1 text-sm text-ink-soft transition-[background-color,color,transform] duration-200 hover:bg-muted/60 hover:text-ink motion-safe:hover:translate-x-0.5"
+                  key={item}
+                  className="rounded-full border border-line px-2 py-0.5 font-mono text-[11px] text-ink-soft transition-[color,border-color,background-color,transform] duration-200 hover:border-brand/50 hover:bg-brand-soft hover:text-brand motion-safe:hover:scale-[1.02]"
                 >
-                  <Check size={15} className="mt-0.5 shrink-0 text-ok" aria-hidden />
-                  <span>{item.label}</span>
+                  {item}
                 </li>
               ))}
             </ul>
+                                                          </div>
 
-            {planned.length > 0 && (
-            <>
-            <h3 className="mt-7 text-sm font-semibold">Designed but not yet connected</h3>
-            <ul className="mt-4 space-y-2.5">
-            {planned.map((item) => (
-            <li key={item.label} className="flex items-start gap-2.5 text-sm text-ink-soft">
-              <Minus size={15} className="mt-0.5 shrink-0 text-line" aria-hidden />
-            <span>{item.label}</span>
+        <div className="panel-flat mt-4 px-5 py-5">
+        <h3 className="text-sm font-semibold">What is running in this build</h3>
+        <ul className="mt-4 grid gap-2.5 lg:grid-cols-2 lg:gap-x-10">
+          {live.map((item) => (
+            <li
+              key={item.label}
+              className="group/row -mx-2 flex items-start gap-2.5 rounded-control px-2 py-1 text-sm text-ink-soft transition-[background-color,color,transform] duration-200 hover:bg-muted/60 hover:text-ink motion-safe:hover:translate-x-0.5"
+            >
+              <Check size={15} className="mt-0.5 shrink-0 text-ok" aria-hidden />
+              <span>{item.label}</span>
+            </li>
+          ))}
+        </ul>
+
+        {planned.length > 0 && (
+        <>
+        <h3 className="mt-7 text-sm font-semibold">Designed but not yet connected</h3>
+        <ul className="mt-4 space-y-2.5">
+        {planned.map((item) => (
+        <li key={item.label} className="flex items-start gap-2.5 text-sm text-ink-soft">
+          <Minus size={15} className="mt-0.5 shrink-0 text-line" aria-hidden />
+        <span>{item.label}</span>
           </li>
         ))}
     </ul>
   </>
 )}
 
-            <p className="mt-6 border-t border-line pt-4 text-xs leading-relaxed text-ink-soft">
-              Nebius and NVIDIA are named to describe technologies used by MoveProof. Neither company
-              endorses this project.
-            </p>
-            </div>
-          </div>
-        </div>
+        <p className="mt-6 border-t border-line pt-4 text-xs leading-relaxed text-ink-soft">
+          Nebius and NVIDIA are named to describe technologies used by MoveProof. Neither company
+          endorses this project.
+        </p>
+                                                        </div>
+
+        {/* Row two, spanning both columns. Keeping it inside the right stack
+            made the grid row as tall as that stack, which left a hole under
+            the shorter narrative panel. A full-width row has no such tie. */}
 
 
         {/* Row two: a matched pair, same radius, border and elevation as row
@@ -512,7 +585,10 @@ export function ClosingCta() {
         }}
       />
       <div className="relative mx-auto max-w-4xl px-5 py-24 text-center sm:px-6">
-        <p className="eyebrow mb-4 text-on-navy/60">Evidence, not assurance</p>
+        {/* on-navy at 60% sat below the contrast floor on the dark canvas.
+            80% stays clearly subordinate to the heading while remaining
+            readable in both themes. */}
+        <p className="eyebrow mb-4 text-on-navy/80">Evidence, not assurance</p>
         <h2 className="text-3xl font-semibold tracking-[-0.02em] sm:text-[2.5rem]">
           See what your migration actually changed.
         </h2>

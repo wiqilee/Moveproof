@@ -88,7 +88,7 @@ export default function SettingsPage() {
           description="Workspace preferences, backend capabilities, and the destination contracts exposed by the current backend revision."
         />
 
-        <section className="mb-6 rounded-card border border-line bg-surface p-5">
+        <section className="panel mb-6 p-5">
           <h2 className="text-[15px] font-semibold">Appearance</h2>
           <p className="mb-4 mt-1 text-sm leading-relaxed text-ink-soft">
             Stored in this browser. Choosing system keeps following your
@@ -100,13 +100,16 @@ export default function SettingsPage() {
           </p>
         </section>
 
-        <section className="mb-6 rounded-card border border-line bg-surface p-5">
+        <section className="panel mb-6 p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-[15px] font-semibold">Backend capabilities</h2>
               <p className="mt-1 text-sm text-ink-soft">
                 Reported by the API. A capability that is off is stated as off
                 rather than hidden.
+              </p>
+              <p className="mt-1.5 inline-flex items-center rounded-full border border-line px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-soft">
+                Read only
               </p>
             </div>
             <button
@@ -146,7 +149,7 @@ export default function SettingsPage() {
           </ul>
         </section>
 
-        <section className="mb-6 rounded-card border border-line bg-surface p-5">
+        <section className="panel mb-6 p-5">
           <h2 className="text-[15px] font-semibold">Destination contracts</h2>
           <p className="mt-1 text-sm leading-relaxed text-ink-soft">
             Loaded from the backend profile registry. Unknown profile IDs are refused rather than
@@ -183,7 +186,7 @@ export default function SettingsPage() {
           )}
         </section>
 
-        <section className="rounded-card border border-line bg-surface p-5">
+        <section className="panel p-5">
           <h2 className="text-[15px] font-semibold">Connection</h2>
           <dl className="mt-3 space-y-2 text-sm">
             <div className="flex flex-wrap items-baseline justify-between gap-2">

@@ -120,14 +120,48 @@ function Pulse() {
   );
 }
 
+/**
+ * How far the whole rig may turn, in radians.
+ *
+ * About 8 degrees of yaw and 3.5 of pitch: enough to reveal that the links and
+ * joints are solids rather than a drawing, nowhere near enough to orbit the
+ * scene or show its back. Module constants, so nothing is allocated per frame.
+ */
+const MAX_YAW = 0.14;
+const MAX_PITCH = 0.06;
+/** Per-frame approach rate. Low enough that the rig trails the pointer. */
+const DAMPING = 0.045;
+
 function Rig({ animate }: { animate: boolean }) {
   const group = useRef<THREE.Group>(null);
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock, pointer }) => {
     if (!animate || !group.current) return;
-    // A degree or so of drift. Enough to read as a space rather than a photo,
-    // far too little to be a performance.
-    group.current.rotation.y = Math.sin(clock.getElapsedTime() * 0.18) * 0.09;
+
+    // The idle drift still runs underneath, so a still pointer never freezes
+    // the scene into a photograph.
+    const idle = Math.sin(clock.getElapsedTime() * 0.18) * 0.09;
+
+    // R3F's own normalised pointer, which is already relative to the canvas:
+    // no document listener, and nothing happens while the cursor is elsewhere
+    // on the page. It rests at 0,0, so leaving the canvas settles the rig back
+    // toward neutral through the same damping rather than snapping.
+    const targetYaw = idle + pointer.x * MAX_YAW;
+    const targetPitch = -pointer.y * MAX_PITCH;
+
+    // Lerp toward the target instead of assigning it. The rig follows the
+    // cursor a beat late, which is what makes it read as inspecting a solid
+    // object rather than tracking a mouse.
+    group.current.rotation.y = THREE.MathUtils.lerp(
+      group.current.rotation.y,
+      targetYaw,
+      DAMPING
+    );
+    group.current.rotation.x = THREE.MathUtils.lerp(
+      group.current.rotation.x,
+      targetPitch,
+      DAMPING
+    );
   });
 
   return (

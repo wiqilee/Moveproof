@@ -44,7 +44,7 @@ export default function ReportsPage() {
 
         {migrationsLoading && migrations.length === 0 ? (
           <div
-            className="flex items-center gap-2.5 rounded-card border border-line bg-surface px-5 py-8 text-sm text-ink-soft"
+            className="flex items-center gap-2.5 panel px-5 py-8 text-sm text-ink-soft"
             role="status"
           >
             <Loader2 size={15} className="spin" aria-hidden />
@@ -58,7 +58,7 @@ export default function ReportsPage() {
             action={{ label: "Start a migration", href: routes.newMigration }}
           />
         ) : (
-          <div className="overflow-hidden rounded-card border border-line bg-surface">
+          <div className="panel overflow-hidden">
             {withEvidence.map((row, index) => (
               <div
                 key={row.id}
