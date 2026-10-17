@@ -1342,7 +1342,7 @@ Nebius, NVIDIA, and Tavily are named throughout to describe technologies used by
 **Wiqi Lee**, creator and sole developer.
 
 - X: [@wiqi_lee](https://x.com/wiqi_lee)
-- Medium: [build notes](https://medium.com/@wiqi_lee)
+- Medium: [build notes](https://medium.com/@wiqi_lee/a-successful-import-is-not-a-correct-one-2135d6c107ec)
 - Devpost: [project entry](https://devpost.com/software/moveproof)
 
 Built for the [Nebius x NVIDIA Global AI Hackathon 2026](https://nebiusglobalaihackathon.devpost.com/). Submissions close 30 October 2026 at 10:00 Pacific Time.
