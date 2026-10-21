@@ -15,35 +15,35 @@ const FAILURE_MODES = [
     field: "customer_id",
     before: "00127",
     after: "127",
-    cause: "An integer cast strips a leading zero",
+    cause: "An integer cast removes the leading zeros.",
     tone: "bad",
   },
   {
     field: "signup_date",
     before: "03/04/2024",
     after: "2024-03-04",
-    cause: "A locale guess turns 3 April into 4 March",
+    cause: "A date-format assumption turns April 3 into March 4.",
     tone: "warn",
   },
   {
     field: "balance",
     before: "1200.55",
     after: "1200.5499",
-    cause: "A float conversion loses a fraction of a cent",
+    cause: "A numeric conversion changes the amount by a fraction of a cent.",
     tone: "bad",
   },
   {
     field: "firmware_version",
     before: "3.10",
     after: "3.1",
-    cause: "A version string parsed as a number loses its trailing zero",
+    cause: "Parsing a version as a number drops its trailing zero.",
     tone: "bad",
   },
   {
     field: "rows",
     before: "2 rows",
     after: "1 row",
-    cause: "A duplicate is dropped without an agreed policy",
+    cause: "A duplicate is removed without an approved policy.",
     tone: "warn",
   },
 ] as const;
@@ -81,17 +81,17 @@ export function ProblemSection() {
             <h2 className="mt-4 text-3xl font-semibold leading-tight tracking-[-0.02em] sm:text-[2.5rem]">
               The import succeeded.
               <br />
-              That is not the same as the data surviving.
+              But did the data keep its meaning?
             </h2>
             <p className="mt-5 max-w-md text-[15px] leading-relaxed text-ink-soft">
-              None of the failures on the right have to raise an error. Row counts can match and
-              logs can stay clean while a customer identifier, a date, or robot calibration metadata
-              silently changes meaning.
+              An import can finish without errors even when critical values change. Row counts may
+              match and logs may remain clean while customer identifiers, dates, or robot
+              calibration metadata lose their intended meaning.
             </p>
             <p className="mt-4 max-w-md text-[15px] leading-relaxed text-ink-soft">
-              The people doing this work are usually operations staff and consultants rather than
-              database specialists. They can spot a misspelled name. A wrong cast applied
-              consistently across ten thousand rows looks exactly like success.
+              Data migrations often involve operations teams and consultants alongside database
+              specialists. A misspelled name may be easy to spot. A data-type conversion applied
+              consistently across thousands of rows is far harder to detect.
             </p>
           </div>
 
@@ -167,8 +167,8 @@ export function ProblemSection() {
                   </div>
                 );
               })}
-              <p className="bg-muted/40 px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
-                Successful import is not preserved meaning
+              <p className="bg-muted/40 px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
+                A successful import doesn&rsquo;t guarantee data integrity.
               </p>
             </div>
           </div>

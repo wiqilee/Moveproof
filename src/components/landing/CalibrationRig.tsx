@@ -87,7 +87,7 @@ export function CalibrationRig({ className = "" }: { className?: string }) {
     <div className={className}>
       <div
         data-rig-root
-        className="dark relative overflow-hidden rounded-card border border-white/10 shadow-[0_24px_48px_-30px_rgba(15,23,42,0.55)]"
+        className="dark relative isolate overflow-hidden rounded-card border border-white/10 shadow-[0_24px_48px_-30px_rgba(15,23,42,0.55)]"
         style={{
           background:
             "radial-gradient(70% 80% at 62% 42%, rgba(37, 99, 235, 0.22), transparent 70%), radial-gradient(50% 40% at 50% 100%, rgba(56, 189, 248, 0.10), transparent 70%), linear-gradient(180deg, #070c18 0%, #04070f 100%)",
