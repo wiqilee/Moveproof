@@ -269,7 +269,9 @@ export function HowItWorks() {
                   >
                     {index + 1}
                   </span>
-                  <h3 className="text-[15px] font-semibold tracking-tight">{stage.title}</h3>
+                  <h3 className="text-[15px] font-semibold tracking-tight transition-colors duration-300 group-hover:text-brand group-focus-within:text-brand">
+                    {stage.title}
+                  </h3>
                 </div>
                 <p className="mb-4 mt-3 text-sm leading-relaxed text-ink-soft">{stage.body}</p>
                 <p className="mt-auto border-t border-line pt-3 font-mono text-[11px] text-ink-soft">
@@ -409,7 +411,12 @@ export function Approach() {
                     >
                       {String(index + 1).padStart(2, "0")}
                     </span>
-                    <span className="text-[13px] font-semibold tracking-tight">
+                    <span
+                      className={[
+                        "text-[13px] font-semibold tracking-tight transition-colors duration-300",
+                        active ? "text-brand" : "group-hover/clause:text-brand",
+                      ].join(" ")}
+                    >
                       {item.clause}
                     </span>
                   </span>
@@ -441,7 +448,7 @@ export function Approach() {
                       {String(index + 1).padStart(2, "0")}
                     </span>
 
-                    <h3 className="text-xl font-semibold leading-snug tracking-[-0.015em] sm:text-[1.35rem]">
+                    <h3 className="text-xl font-semibold leading-snug tracking-[-0.015em] transition-colors duration-300 group-hover:text-brand sm:text-[1.35rem]">
                       {principle.title}
                     </h3>
                   </div>

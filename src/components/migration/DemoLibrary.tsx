@@ -240,6 +240,15 @@ export function DemoLibrary({
             rgba(20, 184, 166, 0) 360deg);
           animation: mp-demo-spin 4.5s linear infinite;
         }
+        .mp-demo-ring-strong {
+          background: conic-gradient(from var(--mp-angle),
+            rgba(20, 184, 166, 0.15) 0deg,
+            rgba(94, 234, 212, 1) 80deg,
+            rgba(56, 189, 248, 0.9) 130deg,
+            rgba(20, 184, 166, 0.15) 220deg,
+            rgba(20, 184, 166, 0.15) 360deg);
+          animation-duration: 3.5s;
+        }
         @keyframes mp-demo-spin { to { --mp-angle: 360deg; } }
         @media (prefers-reduced-motion: reduce) { .mp-demo-ring { animation: none; } }
       `}</style>
@@ -258,14 +267,23 @@ export function DemoLibrary({
             </span>
           </p>
           {suggested && onSwitchProfile && (
-            <Button
-              variant="secondary"
-              icon={ArrowRightLeft}
-              onClick={() => onSwitchProfile(suggested)}
-              disabled={disabled}
-            >
-              Switch destination
-            </Button>
+            // The one action that unlocks the demo datasets, so it carries
+            // the dataset colour and a slowly turning ring to draw the eye.
+            <span className="relative inline-flex shrink-0 rounded-control p-[2px]">
+              <span
+                aria-hidden
+                className="mp-demo-ring mp-demo-ring-strong pointer-events-none absolute inset-0 rounded-control"
+              />
+              <button
+                type="button"
+                onClick={() => onSwitchProfile(suggested)}
+                disabled={disabled}
+                className="relative inline-flex items-center gap-2 whitespace-nowrap rounded-[7px] bg-[#0d9488] px-4 py-2 text-[13px] font-semibold text-white shadow-[0_8px_20px_-12px_rgba(13,148,136,0.8)] transition-colors duration-200 hover:bg-[#0f766e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5eead4] focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <ArrowRightLeft size={14} aria-hidden />
+                Switch to {nameOf(suggested)}
+              </button>
+            </span>
           )}
         </div>
       )}
