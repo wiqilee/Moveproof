@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bot, Eye, Info, Loader2, Upload } from "lucide-react";
+import { ArrowRightLeft, Bot, Eye, Info, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
 /**
@@ -142,7 +142,20 @@ export function DemoLibrary({
   onUse,
   availableProfiles,
   disabled,
+  selectedProfile,
+  profileNames = {},
+  onSwitchProfile,
 }: {
+  /**
+   * The destination chosen above. A dataset only becomes usable when it
+   * targets that destination, so a demo can never silently change the
+   * destination the operator picked.
+   */
+  selectedProfile: string | null;
+  /** Display names by profile id, for the explanation. */
+  profileNames?: Record<string, string>;
+  /** Lets the operator switch destination explicitly from here. */
+  onSwitchProfile?: (profile: string) => void;
   onUse: (file: File, profile: string) => Promise<unknown> | void;
   /**
    * Destination profiles this backend actually advertises.
@@ -200,21 +213,74 @@ export function DemoLibrary({
     }
   };
 
+  // Datasets that target the destination chosen above. Every current fixture
+  // is a robotics fixture, so choosing Customer records leaves none usable.
+  const matching = DEMO_DATASETS.filter(
+    (dataset) => !selectedProfile || dataset.profile === selectedProfile
+  );
+  const suggested = DEMO_DATASETS.find((dataset) =>
+    availableProfiles.includes(dataset.profile)
+  )?.profile;
+  const nameOf = (id: string) => profileNames[id] ?? id;
+
   return (
     <div className="space-y-3">
+      {matching.length === 0 && selectedProfile && (
+        <div className="flex flex-col gap-3 rounded-card border border-line bg-muted/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-start gap-2 text-[13px] leading-relaxed text-ink-soft">
+            <Info size={15} className="mt-0.5 shrink-0" aria-hidden />
+            <span>
+              There are no demo datasets for{" "}
+              <span className="font-semibold text-ink">{nameOf(selectedProfile)}</span> yet. The
+              datasets below target{" "}
+              <span className="font-semibold text-ink">
+                {suggested ? nameOf(suggested) : "another destination"}
+              </span>
+              . Upload your own file, or switch the destination to use them.
+            </span>
+          </p>
+          {suggested && onSwitchProfile && (
+            <Button
+              variant="secondary"
+              icon={ArrowRightLeft}
+              onClick={() => onSwitchProfile(suggested)}
+              disabled={disabled}
+            >
+              Switch destination
+            </Button>
+          )}
+        </div>
+      )}
+
       {DEMO_DATASETS.map((dataset) => {
         const open = preview?.id === dataset.id;
         // The server decides which destinations exist. An empty list means the
         // backend advertised none, so nothing here is actionable.
         const offered = availableProfiles.includes(dataset.profile);
+        // A dataset for a different destination is shown, dimmed and
+        // inactive, never submitted under the wrong contract.
+        const mismatched = Boolean(selectedProfile) && dataset.profile !== selectedProfile;
         return (
           <article
             key={dataset.id}
-            className="overflow-hidden rounded-card border border-line bg-surface shadow-sm transition-colors hover:border-brand/40"
+            aria-disabled={mismatched || undefined}
+            className={[
+              "group/demo overflow-hidden rounded-card border bg-surface shadow-sm transition-[border-color,box-shadow,opacity] duration-300",
+              mismatched
+                ? "border-line opacity-55"
+                : "border-line hover:border-[#8b5cf6]/50 hover:shadow-[0_12px_32px_-20px_rgba(139,92,246,0.55)]",
+            ].join(" ")}
           >
             <div className="flex flex-wrap items-start gap-3 px-5 py-4">
+              {/* Violet, not blue: blue marks the destination above, violet
+                  marks a dataset, so the two choices never look alike. */}
               <span
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand"
+                className={[
+                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-[color,background-color,box-shadow] duration-300",
+                  mismatched
+                    ? "bg-muted text-ink-soft"
+                    : "bg-[#8b5cf6]/10 text-[#7c3aed] group-hover/demo:bg-[#7c3aed] group-hover/demo:text-white group-hover/demo:shadow-[0_0_0_4px_rgba(139,92,246,0.15),0_0_16px_rgba(139,92,246,0.55)] dark:text-[#a78bfa] dark:group-hover/demo:text-white",
+                ].join(" ")}
                 aria-hidden
               >
                 <Bot size={17} />
@@ -232,7 +298,13 @@ export function DemoLibrary({
                       key={line}
                       className="flex gap-2 text-xs leading-relaxed text-ink-soft"
                     >
-                      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-brand" aria-hidden />
+                      <span
+                        className={[
+                          "mt-1.5 h-1 w-1 shrink-0 rounded-full",
+                          mismatched ? "bg-ink-soft/50" : "bg-[#8b5cf6]",
+                        ].join(" ")}
+                        aria-hidden
+                      />
                       {line}
                     </li>
                   ))}
@@ -297,13 +369,15 @@ export function DemoLibrary({
               <Button
                 icon={loading === `${dataset.id}:use` ? Loader2 : Upload}
                 onClick={() => void use(dataset)}
-                disabled={disabled || !offered || loading !== null}
+                disabled={disabled || !offered || mismatched || loading !== null}
               >
                 {loading === `${dataset.id}:use`
                   ? "Uploading"
-                  : offered
-                    ? "Use this dataset"
-                    : "Destination unavailable"}
+                  : !offered
+                    ? "Destination unavailable"
+                    : mismatched
+                      ? `Requires ${nameOf(dataset.profile)}`
+                      : "Use this dataset"}
               </Button>
               <Button
                 variant="secondary"

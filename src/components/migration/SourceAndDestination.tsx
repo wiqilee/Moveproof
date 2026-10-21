@@ -334,11 +334,16 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
       {entry === "demo" && !migrationId ? (
         <DemoLibrary
           availableProfiles={profiles.map((profile) => profile.id)}
+          selectedProfile={destinationProfile}
+          profileNames={Object.fromEntries(
+            profiles.map((profile) => [profile.id, profile.display_name])
+          )}
+          onSwitchProfile={setDestinationProfile}
           disabled={!profilesReady || busy !== null}
           onUse={async (file, profile) => {
             // Identical to a dragged file: same store action, same endpoint.
-            // The dataset names its destination, so the picker follows it.
-            setDestinationProfile(profile);
+            // Only datasets for the chosen destination are usable, so the
+            // destination never changes behind the operator's back.
             await uploadFile(file, profile);
           }}
         />
