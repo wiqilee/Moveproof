@@ -225,6 +225,24 @@ export function DemoLibrary({
 
   return (
     <div className="space-y-3">
+      {/* A slowly turning teal-to-cyan sweep for the hovered dataset's
+          border. @property lets the angle animate smoothly; browsers without
+          it show the same gradient, still. Reduced motion keeps it still. */}
+      <style>{`
+        @property --mp-angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+        .mp-demo-ring {
+          background: conic-gradient(from var(--mp-angle),
+            rgba(20, 184, 166, 0) 0deg,
+            rgba(20, 184, 166, 0.85) 70deg,
+            rgba(56, 189, 248, 0.75) 120deg,
+            rgba(20, 184, 166, 0) 190deg,
+            rgba(20, 184, 166, 0.25) 280deg,
+            rgba(20, 184, 166, 0) 360deg);
+          animation: mp-demo-spin 4.5s linear infinite;
+        }
+        @keyframes mp-demo-spin { to { --mp-angle: 360deg; } }
+        @media (prefers-reduced-motion: reduce) { .mp-demo-ring { animation: none; } }
+      `}</style>
       {matching.length === 0 && selectedProfile && (
         <div className="flex flex-col gap-3 rounded-card border border-line bg-muted/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="flex items-start gap-2 text-[13px] leading-relaxed text-ink-soft">
@@ -261,35 +279,58 @@ export function DemoLibrary({
         // inactive, never submitted under the wrong contract.
         const mismatched = Boolean(selectedProfile) && dataset.profile !== selectedProfile;
         return (
+          // The outer frame carries the rotating ring; the card sits 1px
+          // inside it, so the ring reads as the card's own border.
+          <div key={dataset.id} className="group/demo relative rounded-card p-px">
+            {!mismatched && (
+              <span
+                aria-hidden
+                className="mp-demo-ring pointer-events-none absolute inset-0 rounded-card opacity-0 transition-opacity duration-500 group-hover/demo:opacity-100 group-focus-within/demo:opacity-100"
+              />
+            )}
           <article
-            key={dataset.id}
             aria-disabled={mismatched || undefined}
             className={[
-              "group/demo overflow-hidden rounded-card border bg-surface shadow-sm transition-[border-color,box-shadow,opacity] duration-300",
+              "relative overflow-hidden rounded-[11px] border bg-surface shadow-sm transition-[border-color,box-shadow,opacity] duration-300",
               mismatched
                 ? "border-line opacity-55"
-                : "border-line hover:border-[#8b5cf6]/50 hover:shadow-[0_12px_32px_-20px_rgba(139,92,246,0.55)]",
+                : "border-line group-hover/demo:border-transparent group-hover/demo:shadow-[0_14px_34px_-22px_rgba(13,148,136,0.6)] group-focus-within/demo:border-transparent",
             ].join(" ")}
           >
-            <div className="flex flex-wrap items-start gap-3 px-5 py-4">
-              {/* Violet, not blue: blue marks the destination above, violet
-                  marks a dataset, so the two choices never look alike. */}
-              <span
+            <div className="px-5 py-4">
+              {/* Teal, not blue: blue marks the destination above, teal marks
+                  a dataset, so the two choices never look alike. The icon and
+                  title share one frame and light up together. */}
+              <div
                 className={[
-                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-[color,background-color,box-shadow] duration-300",
+                  "-ml-1 inline-flex max-w-full items-center gap-3 rounded-lg border py-1 pl-1 pr-3 transition-[border-color,background-color] duration-300",
                   mismatched
-                    ? "bg-muted text-ink-soft"
-                    : "bg-[#8b5cf6]/10 text-[#7c3aed] group-hover/demo:bg-[#7c3aed] group-hover/demo:text-white group-hover/demo:shadow-[0_0_0_4px_rgba(139,92,246,0.15),0_0_16px_rgba(139,92,246,0.55)] dark:text-[#a78bfa] dark:group-hover/demo:text-white",
+                    ? "border-transparent"
+                    : "border-transparent group-hover/demo:border-[#14b8a6]/45 group-hover/demo:bg-[#14b8a6]/[0.07] group-focus-within/demo:border-[#14b8a6]/45",
                 ].join(" ")}
-                aria-hidden
               >
-                <Bot size={17} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-[15px] font-semibold tracking-[-0.01em]">
+                <span
+                  className={[
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-[color,background-color,box-shadow] duration-300",
+                    mismatched
+                      ? "bg-muted text-ink-soft"
+                      : "bg-[#14b8a6]/10 text-[#0f766e] group-hover/demo:bg-[#0d9488] group-hover/demo:text-white group-hover/demo:shadow-[0_0_0_4px_rgba(20,184,166,0.15),0_0_16px_rgba(20,184,166,0.5)] dark:text-[#5eead4] dark:group-hover/demo:text-white",
+                  ].join(" ")}
+                  aria-hidden
+                >
+                  <Bot size={17} />
+                </span>
+                <h3
+                  className={[
+                    "truncate text-[15px] font-semibold tracking-[-0.01em] transition-colors duration-300",
+                    mismatched ? "" : "group-hover/demo:text-[#0f766e] dark:group-hover/demo:text-[#5eead4]",
+                  ].join(" ")}
+                >
                   {dataset.name}
                 </h3>
-                <p className="mt-1 text-[13px] leading-relaxed text-ink-soft">
+              </div>
+              <div className="mt-1.5 min-w-0 pl-12">
+                <p className="text-[13px] leading-relaxed text-ink-soft">
                   {dataset.purpose}
                 </p>
                 <ul className="mt-2.5 space-y-1">
@@ -301,7 +342,7 @@ export function DemoLibrary({
                       <span
                         className={[
                           "mt-1.5 h-1 w-1 shrink-0 rounded-full",
-                          mismatched ? "bg-ink-soft/50" : "bg-[#8b5cf6]",
+                          mismatched ? "bg-ink-soft/50" : "bg-[#14b8a6]",
                         ].join(" ")}
                         aria-hidden
                       />
@@ -389,6 +430,7 @@ export function DemoLibrary({
               </Button>
             </div>
           </article>
+          </div>
         );
       })}
     </div>
