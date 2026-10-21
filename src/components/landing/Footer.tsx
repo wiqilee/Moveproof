@@ -117,9 +117,6 @@ export function Footer() {
                 <MaybeLink link={LINKS.github} />
               </li>
               <li>
-                <MaybeLink link={LINKS.liveApp} />
-              </li>
-              <li>
                 <MaybeLink link={LINKS.youtubeDemo} />
               </li>
               <li>
@@ -130,14 +127,14 @@ export function Footer() {
 
           <div>
             <h3 className="text-[13px] font-semibold">Creator</h3>
-            <p className="mt-3.5 text-sm text-ink-soft">{AUTHOR.name}</p>
-            <p className="mt-1 text-xs text-ink-soft">{AUTHOR.role}</p>
-            <ul className="mt-3 space-y-2.5 text-sm">
+            <ul className="mt-3.5 space-y-2.5 text-sm">
               <li>
-                <MaybeLink link={LINKS.x} />
+                {/* The name itself links to X, so the creator is listed once. */}
+                <MaybeLink link={{ ...LINKS.x, label: AUTHOR.name }} />
+                <p className="mt-1 text-xs text-ink-soft">{AUTHOR.role}</p>
               </li>
               <li>
-                <MaybeLink link={LINKS.medium} />
+                <MaybeLink link={LINKS.buildNotes} />
               </li>
             </ul>
           </div>

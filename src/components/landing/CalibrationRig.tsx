@@ -15,14 +15,17 @@ import { CalibrationRigFallback } from "./CalibrationRigFallback";
  *   reduced motion       the static SVG rig, permanently
  *   otherwise            the WebGL scene, loaded after mount
  *
- * The 3D chunk is imported with ssr: false, so nothing about it runs during
- * server rendering, and the SVG is the loading state rather than a spinner:
- * the story is already complete before the canvas arrives, and if the canvas
- * never arrives nothing is missing.
+ * The rig always sits on its own dark stage, in both themes. The stage is
+ * scoped with the `dark` class, so every token inside it (including the SVG
+ * fallback underneath the canvas) resolves to the dark palette. The server
+ * render and the hydrated page therefore show the same dark card, and the
+ * canvas fades in over a fallback drawn in matching colours: no light card
+ * ever flashes before the 3D scene arrives.
+ *
+ * The arm is a dataset illustration, never a controlled device. The pointer
+ * changes the viewing angle of the whole scene; no joint ever moves.
  */
 
-// No loading element: the fallback below the canvas is the loading state, and
-// swapping one illustration for another is exactly the flash being removed.
 const CalibrationRig3D = dynamic(() => import("./CalibrationRig3D"), {
   ssr: false,
 });
@@ -50,6 +53,9 @@ const STAGES = [
   "Committed",
 ];
 
+/** From this stage on, the records in the scene are drawn as verified. */
+const VERIFIED_FROM = STAGES.indexOf("Independent verification");
+
 export function CalibrationRig({ className = "" }: { className?: string }) {
   const [mode, setMode] = useState<"static" | "webgl">("static");
   const [animate, setAnimate] = useState(false);
@@ -65,10 +71,8 @@ export function CalibrationRig({ className = "" }: { className?: string }) {
     // download and a GPU context to show what the SVG already shows.
     if (reduced) return;
 
-    if (hasWebGL()) {
-      setMode("webgl");
-      setAnimate(true);
-    }
+    setAnimate(true);
+    if (hasWebGL()) setMode("webgl");
 
     const timer = window.setInterval(
       () => setStage((current) => (current + 1) % STAGES.length),
@@ -77,59 +81,107 @@ export function CalibrationRig({ className = "" }: { className?: string }) {
     return () => window.clearInterval(timer);
   }, []);
 
-  if (mode === "static") return <CalibrationRigFallback className={className} />;
+  const verified = animate && stage >= VERIFIED_FROM;
 
   return (
     <div className={className}>
-      <div className="relative overflow-hidden rounded-card border border-line bg-gradient-to-b from-surface to-canvas">
-        {/* Shorter on a phone, so the scene never crowds the copy above it.
-            The camera framing keeps the whole arm visible at every height. */}
-        {/* The fallback stays mounted underneath and the canvas fades in over
-            it. Both occupy the same box, so nothing reflows and the area is
-            never blank: one scene becomes interactive rather than two
-            illustrations trading places. */}
-        <div className="relative h-[280px] sm:h-[340px] lg:h-[400px]">
+      <div
+        data-rig-root
+        className="dark relative overflow-hidden rounded-card border border-white/10 shadow-[0_24px_48px_-30px_rgba(15,23,42,0.55)]"
+        style={{
+          background:
+            "radial-gradient(70% 80% at 62% 42%, rgba(37, 99, 235, 0.22), transparent 70%), radial-gradient(50% 40% at 50% 100%, rgba(56, 189, 248, 0.10), transparent 70%), linear-gradient(180deg, #070c18 0%, #04070f 100%)",
+        }}
+      >
+        {/* The product's measurement grid, faded toward the edges. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage:
+              "linear-gradient(to right, rgba(148, 163, 184, 0.07) 1px, transparent 1px), linear-gradient(to bottom, rgba(148, 163, 184, 0.07) 1px, transparent 1px)",
+            backgroundSize: "28px 28px",
+            maskImage: "radial-gradient(75% 75% at 55% 45%, black 35%, transparent 90%)",
+            WebkitMaskImage: "radial-gradient(75% 75% at 55% 45%, black 35%, transparent 90%)",
+          }}
+        />
+
+        {/* Shorter on a phone, so the scene never crowds the copy above it. */}
+        <div className="relative h-[300px] sm:h-[360px] lg:h-[420px]">
           <div
             aria-hidden={sceneReady}
             className={[
-              "absolute inset-0 transition-opacity duration-500",
+              "absolute inset-0 transition-opacity duration-700",
               sceneReady ? "opacity-0" : "opacity-100",
             ].join(" ")}
           >
             <CalibrationRigFallback bare className="h-full" />
           </div>
 
+          {mode === "webgl" && (
+            <div
+              className={[
+                "absolute inset-0 transition-opacity duration-700",
+                sceneReady ? "opacity-100" : "opacity-0",
+              ].join(" ")}
+            >
+              <CalibrationRig3D
+                animate={animate}
+                verified={verified}
+                stage={animate ? stage : 0}
+                onReady={() => setSceneReady(true)}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* The record the scene illustrates. In the 3D scene the same values
+            are pinned to the joints they describe; this card is the readable
+            summary, and it changes state with the workflow pills below. */}
+        <div data-rig-avoid className="pointer-events-none absolute left-4 top-4 z-30 hidden sm:block">
           <div
             className={[
-              "absolute inset-0 transition-opacity duration-500",
-              sceneReady ? "opacity-100" : "opacity-0",
+              "rounded-control border bg-[#080d1a]/85 px-3 py-2 font-mono text-[10px] leading-relaxed backdrop-blur transition-colors duration-500",
+              verified ? "border-ok/50" : "border-white/15",
             ].join(" ")}
           >
-            <CalibrationRig3D animate={animate} onReady={() => setSceneReady(true)} />
+            <div className="mb-1 flex items-center justify-between gap-6">
+              <span className="text-[9px] uppercase tracking-[0.18em] text-[#8b9bb8]">
+                robot_calibration_v1
+              </span>
+              <span
+                className={[
+                  "h-1.5 w-1.5 rounded-full transition-colors duration-500",
+                  verified ? "bg-ok" : "bg-brand",
+                ].join(" ")}
+              />
+            </div>
+            <dl>
+              {[
+                ["robot_id", "0017"],
+                ["joint_name", "elbow_left"],
+                ["firmware", "3.08"],
+                ["sensor_frame", "arm_left"],
+              ].map(([key, value]) => (
+                <div key={key} className="flex justify-between gap-4">
+                  <dt className="text-[#8b9bb8]">{key}</dt>
+                  <dd className="font-semibold text-[#f1f5f9]">{value}</dd>
+                </div>
+              ))}
+            </dl>
+            <p
+              className={[
+                "mt-1 text-[9px] transition-colors duration-500",
+                verified ? "text-ok" : "text-[#8b9bb8]",
+              ].join(" ")}
+            >
+              {verified ? "Verified against the contract" : "Awaiting verification"}
+            </p>
           </div>
         </div>
 
-        {/* Annotations live in the DOM rather than in the scene: real text,
-            real contrast, readable by a screen reader. Hidden on the narrowest
-            screens, where they would sit over the arm. */}
-        <div className="pointer-events-none absolute left-4 top-4 hidden sm:block">
-          <dl className="panel-flat px-3 py-2 font-mono text-[10px] leading-relaxed">
-            {[
-              ["robot_id", "0017"],
-              ["joint", "elbow_left"],
-              ["firmware", "3.08"],
-              ["sensor_frame", "arm_left"],
-            ].map(([key, value]) => (
-              <div key={key} className="flex gap-2">
-                <dt className="text-ink-soft">{key}</dt>
-                <dd className="font-semibold">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-
-        <p className="pointer-events-none absolute bottom-3 right-4 text-[10px] text-ink-soft">
-          Illustrative calibration rig. MoveProof verifies data, not hardware.
+        <p data-rig-avoid className="pointer-events-none absolute bottom-3 right-4 z-30 text-[10px] text-[#8b9bb8]">
+          Illustrative calibration records. MoveProof verifies data, not hardware.
         </p>
       </div>
 

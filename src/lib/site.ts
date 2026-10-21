@@ -28,7 +28,14 @@ export const AUTHOR = {
 } as const;
 
 export const LINKS: Record<
-  "github" | "liveApp" | "youtubeDemo" | "devpostProject" | "hackathon" | "x" | "medium",
+  | "github"
+  | "liveApp"
+  | "youtubeDemo"
+  | "devpostProject"
+  | "hackathon"
+  | "x"
+  | "medium"
+  | "buildNotes",
   ExternalLink
 > = {
   hackathon: {
@@ -45,12 +52,12 @@ export const LINKS: Record<
   // Placeholders. Replace each url with the real one when it exists.
   github: {
     label: "Source code",
-    url: "https://github.com/wiqi-lee/moveproof",
+    url: "https://github.com/wiqilee/Moveproof",
     verified: true,
   },
   liveApp: {
     label: "Live app",
-    url: "https://moveproof.vercel.app",
+    url: "https://moveproof-wiqi.vercel.app",
     verified: true,
   },
   youtubeDemo: {
@@ -64,8 +71,13 @@ export const LINKS: Record<
     verified: true,
   },
   medium: {
-    label: "Build notes",
+    label: "Medium",
     url: "https://medium.com/@wiqi_lee",
+    verified: true,
+  },
+  buildNotes: {
+    label: "Build notes",
+    url: "https://medium.com/@wiqi_lee/a-successful-import-is-not-a-correct-one-2135d6c107ec",
     verified: true,
   },
 };
