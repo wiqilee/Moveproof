@@ -28,8 +28,6 @@ Built by [Wiqi Lee](https://x.com/wiqi_lee) for the Nebius x NVIDIA Global AI Ha
 
 NVIDIA Nemotron 3 Super on Nebius Token Factory drafts every model-assisted proposal. Nemotron 3 Ultra is called selectively, only when deterministic validation finds interacting ambiguities. Neither model can execute anything.
 
-*Demo video: to be published before final submission.*
-
 </div>
 
 ---
