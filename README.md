@@ -20,7 +20,7 @@ MoveProof is a verification-first workspace for high-stakes structured-data migr
 [![Nebius](https://img.shields.io/badge/Nebius-Token_Factory-5B5BD6.svg)](https://nebius.com)
 [![NVIDIA](https://img.shields.io/badge/NVIDIA-Nemotron_Super_+_Ultra-76B900.svg)](https://www.nvidia.com)
 [![Tavily](https://img.shields.io/badge/Tavily-External_Evidence-2563EB.svg)](https://tavily.com)
-[![YouTube Demo](https://img.shields.io/badge/YouTube-Demo_Video-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=REPLACE_WITH_DEMO_ID)
+[![YouTube Demo](https://img.shields.io/badge/YouTube-Demo_Video-FF0000?logo=youtube&logoColor=white)](https://youtu.be/sTFDnpzNuWM)
 
 [Live app](https://moveproof-wiqi.vercel.app) · [Backend health](https://moveproof-backend-579259634424.asia-southeast2.run.app/health) · [Devpost entry](https://devpost.com/software/moveproof) · [Hackathon](https://nebiusglobalaihackathon.devpost.com/)
 
