@@ -86,14 +86,30 @@ def execute_plan(
     # report those joints as conflicting rows.
     identity = identity_columns or (plan.key_column,)
 
-    def row_identity(source_row: SourceRow) -> str:
-        return "\u001f".join(source_row.get(column) for column in identity)
+    # The key and the identity are destination columns. A file need not name
+    # its columns the way the destination does (RobotID for robot_id), so each
+    # one is read from the source column the approved plan maps into it, never
+    # by assuming the two names match. Where they do match, as in every
+    # fixture, this resolves to exactly the column it always read.
+    source_for = {
+        m.destination_column: m.source_column
+        for m in plan.mappings
+        if m.destination_column is not None and m.operation is not Operation.DEDUPLICATE
+    }
 
-    key_mapping = plan.mapping_for(plan.key_column)
+    def row_identity(source_row: SourceRow) -> str:
+        return "\u001f".join(
+            source_row.get(source_for.get(column, column)) for column in identity
+        )
+
+    key_mapping = next(
+        (m for m in plan.mappings if m.destination_column == plan.key_column), None
+    ) or plan.mapping_for(plan.key_column)
     if key_mapping is None:
         raise ExecutionRefused(
             f"The approved plan has no mapping for the key column {plan.key_column!r}."
         )
+    key_source = key_mapping.source_column
 
     # --- duplicate handling -------------------------------------------------
     # Exact duplicates and conflicting keys are different problems. An exact
@@ -132,7 +148,7 @@ def execute_plan(
             staged.append(
                 StagedRow(
                     row_number=row.row_number,
-                    source_key=row.get(plan.key_column),
+                    source_key=row.get(key_source),
                     values={},
                     disposition=RowDisposition.DUPLICATE_EXCLUDED,
                     reason="Exact duplicate excluded under the approved policy.",
@@ -140,7 +156,7 @@ def execute_plan(
             )
             continue
 
-        raw_key = row.get(plan.key_column)
+        raw_key = row.get(key_source)
         values: dict[str, object] = {}
         row_errors: list[TransformError] = []
 

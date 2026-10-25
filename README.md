@@ -471,6 +471,7 @@ pytest tests/test_model_routing.py -v    # selective reasoning escalation
 | `test_destination_profiles.py` | Destination profile registry, backward compatibility, schema and contract selection | Nothing |
 | `test_robotics_verification.py` | Composite robotics identity, approved date policies, mixed-decimal verification and tamper detection | Nothing |
 | `test_robotics_workflow.py` | Robotics planning/execution workflow plus database lifecycle cases | PostgreSQL for database-marked cases |
+| `test_user_robotics_upload.py` | Operator-supplied robotics files: CSV, TSV, XLSX and XLSM parsing, incompatible or incomplete files refused before approval, renamed headers mapped through the approved plan, and fail-closed identifier, date, decimal and duplicate cases | Nothing |
 
 A test that needs something unavailable skips with a reason rather than passing quietly. No test spends Nebius or Tavily credits: both providers are mocked.
 
@@ -854,6 +855,7 @@ Moveproof/
 │   │   ├── test_robotics_verification.py  Composite identity and independent robotics verification
 │   │   ├── test_date_policy_inference.py Full-source ISO inference and out-of-sample ambiguity regression tests
 │   │   ├── test_robotics_workflow.py      Robotics workflow and database lifecycle cases
+│   │   ├── test_user_robotics_upload.py   Operator-supplied robotics files: parsing, compatibility, renamed headers
 │   │   └── fixtures/
 │   │       ├── clean.csv                   The nine hand written hazard fixtures
 │   │       ├── ambiguous_date.csv

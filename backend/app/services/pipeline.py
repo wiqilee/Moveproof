@@ -929,11 +929,25 @@ def verify(
     # The policy lives inside the plan body, not as a column of its own.
     approved_body = approved.get("body") or {}
     date_format_policy = approved_body.get("date_format_policy")
-    decimal_conventions = {
-        mapping["source_column"]: mapping["options"]["decimal_convention"]
+    # The verifier reads every column by its destination name, so both the
+    # approved readings and the source of each column are keyed that way. For
+    # a file whose columns already carry the destination names the two keys
+    # are identical, which is every fixture and every earlier migration.
+    approved_mappings = [
+        mapping
         for mapping in approved_body.get("mappings", [])
+        if mapping.get("destination_column")
+    ]
+    decimal_conventions = {
+        mapping["destination_column"]: mapping["options"]["decimal_convention"]
+        for mapping in approved_mappings
         if isinstance(mapping.get("options"), dict)
         and mapping["options"].get("decimal_convention")
+    }
+    column_sources = {
+        mapping["destination_column"]: mapping["source_column"]
+        for mapping in approved_mappings
+        if mapping.get("source_column")
     }
 
     outcome = verify_run(
@@ -948,6 +962,7 @@ def verify(
         identity_columns=profile.key_columns,
         date_format_policy=date_format_policy,
         decimal_conventions=decimal_conventions,
+        column_sources=column_sources,
     )
     repository.save_checks(conn, run_id, outcome.checks)
     repository.mark_verified(conn, run_id)

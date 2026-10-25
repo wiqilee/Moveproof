@@ -283,7 +283,7 @@ export function VerificationResults({
                       ? "bg-bad-soft/40"
                       : check.status === "review"
                         ? "bg-warn-soft/30"
-                        : "hover:bg-muted/40",
+                        : "hover:bg-brand-soft/50",
                   ].join(" ")}
                 >
                   <td className="px-4 py-3.5">

@@ -604,7 +604,7 @@ export function EvidenceReportView({
           {evidence.verification.checks.map((check) => (
             <li
               key={check.check_id}
-              className="flex flex-wrap items-center justify-between gap-3 px-5 py-2.5 text-sm"
+              className="flex flex-wrap items-center justify-between gap-3 px-5 py-2.5 text-sm transition-colors hover:bg-muted/40"
             >
               <span className="min-w-0">
                 {check.name}

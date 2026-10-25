@@ -29,6 +29,9 @@ import { useMigration } from "@/lib/migration-store";
 export const WIZARD_STEPS = ["Source", "Destination", "Mapping", "Review"];
 
 const ACCEPTED = ".csv,.tsv,.xlsx,.xlsm";
+const ACCEPTED_SUFFIXES = ACCEPTED.split(",");
+/** The backend's own limit, used until health has loaded. */
+const DEFAULT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 /**
  * The heading every step shares.
@@ -173,6 +176,7 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
     busy,
     destinationProfile,
     setDestinationProfile,
+    health,
   } = useMigration();
   const [profiles, setProfiles] = useState<ApiDestinationProfile[]>([]);
   // Until this settles, the destination on screen is not yet the destination
@@ -184,6 +188,13 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
   const [entry, setEntry] = useState<"upload" | "demo">("upload");
   const [preview, setPreview] = useState<ApiPreview | null>(null);
   const [dragging, setDragging] = useState(false);
+  // A file refused in the browser before it is sent: wrong type or too large.
+  // The backend checks both again; anything it refuses arrives through the
+  // shared error banner as before.
+  const [fileProblem, setFileProblem] = useState<string | null>(null);
+  // The columns the chosen destination expects, from the backend registry,
+  // so an operator bringing their own file knows what it must contain.
+  const [expected, setExpected] = useState<ApiDestinationSchema | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -230,11 +241,47 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!profilesReady || !destinationProfile) return;
+    let active = true;
+    api
+      .destinationSchema(destinationProfile)
+      .then((result) => {
+        if (active) setExpected(result);
+      })
+      .catch(() => {
+        if (active) setExpected(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [profilesReady, destinationProfile]);
+
+  const maxBytes = health?.limits?.max_upload_bytes ?? DEFAULT_MAX_UPLOAD_BYTES;
+
   const accept = async (file: File | undefined) => {
     if (!file) return;
     // Refuse rather than upload against a destination that may still change
     // under the operator a moment later.
     if (!profilesReady) return;
+    // The file picker filters by type, a dropped file does not, and a file
+    // over the limit should not travel to the backend only to be refused.
+    const lowered = file.name.toLowerCase();
+    if (!ACCEPTED_SUFFIXES.some((suffix) => lowered.endsWith(suffix))) {
+      setFileProblem(
+        `${file.name} is not a supported file type. Upload a CSV, TSV, XLSX or XLSM file.`
+      );
+      return;
+    }
+    if (file.size > maxBytes) {
+      setFileProblem(
+        `${file.name} is ${(file.size / 1024 / 1024).toFixed(1)} MB, above the ${Math.round(
+          maxBytes / 1024 / 1024
+        )} MB limit.`
+      );
+      return;
+    }
+    setFileProblem(null);
     await uploadFile(file, destinationProfile ?? undefined);
   };
 
@@ -260,8 +307,8 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
           formats stated where they are needed rather than in a footnote. */}
       {/* One file per migration, and the reason said once, where the
           decision is made. */}
-      <div className="mb-6 flex items-start gap-2.5 rounded-card border border-line bg-muted/40 px-4 py-3 text-[13px] leading-relaxed text-ink-soft">
-        <ShieldCheck size={15} className="mt-0.5 shrink-0" aria-hidden />
+      <div className="mb-6 flex items-start gap-2.5 rounded-card border border-brand/30 bg-brand-soft/60 px-4 py-3 text-[13px] leading-relaxed text-ink-soft">
+        <ShieldCheck size={15} className="mt-0.5 shrink-0 text-brand" aria-hidden />
         <span>
           One source file per migration. Keeping them separate is what makes
           execution, verification, evidence and rollback isolated and auditable:
@@ -408,11 +455,48 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
         </Button>
 
         <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-t border-line pt-5">
-          <TrustNote icon={FileSpreadsheet}>CSV, TSV, XLSX, XLSM · up to 25 MB</TrustNote>
+          <TrustNote icon={FileSpreadsheet}>
+            CSV, TSV, XLSX, XLSM · up to {Math.round(maxBytes / 1024 / 1024)} MB
+          </TrustNote>
           <TrustNote icon={ShieldCheck}>Original bytes stored with a checksum</TrustNote>
           <TrustNote icon={Lock}>Nothing is written to the destination yet</TrustNote>
         </div>
+
+        {/* What the chosen destination needs from an operator's own file,
+            read from the backend registry rather than written here. */}
+        {expected && (
+          <div className="mx-auto mt-5 max-w-2xl rounded-control border border-line bg-surface/80 px-4 py-3 text-left">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-soft">
+              Your file should contain
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {expected.columns.map((column) => (
+                <span
+                  key={column.name}
+                  className="rounded-full border border-line bg-muted/60 px-2 py-0.5 font-mono text-[11px] text-ink"
+                  title={column.description}
+                >
+                  {column.name}
+                </span>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-ink-soft">
+              One header row, then one record per row. Headers named differently can
+              be mapped by the Nemotron proposal at the mapping step, and a file that
+              cannot fill every required column is stopped before approval.
+            </p>
+          </div>
+        )}
       </div>
+      )}
+
+      {fileProblem && (
+        <p
+          className="mt-4 rounded-card border border-bad/30 bg-bad-soft px-4 py-3 text-sm text-bad"
+          role="alert"
+        >
+          {fileProblem}
+        </p>
       )}
 
       {uploading && (
@@ -471,7 +555,7 @@ export function SourceStep({ onNext, onCancel }: { onNext: () => void; onCancel:
                 {preview.rows.map((row) => (
                   <tr
                     key={row.row_number}
-                    className="border-t border-line transition-colors hover:bg-muted/40"
+                    className="border-t border-line transition-colors hover:bg-brand-soft/50"
                   >
                     {preview.columns.map((column) => {
                       const value = row.values[column] ?? "";
@@ -595,7 +679,7 @@ export function DestinationStep({
                   {schema.columns.map((column) => (
                     <tr
                       key={column.name}
-                      className="border-t border-line align-top transition-colors hover:bg-muted/40"
+                      className="border-t border-line align-top transition-colors hover:bg-brand-soft/50"
                     >
                       <td className="px-4 py-3.5 font-mono text-[13px] font-semibold">
                         {column.name}

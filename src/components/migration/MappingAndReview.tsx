@@ -340,7 +340,7 @@ export function MappingStep({
                         "border-t border-line align-top transition-colors",
                         mapping.status === "review"
                           ? "bg-warn-soft/30 hover:bg-warn-soft/50"
-                          : "hover:bg-muted/40",
+                          : "hover:bg-brand-soft/50",
                       ].join(" ")}
                     >
                       <td className="px-4 py-4 font-mono text-[13px] font-semibold">
@@ -472,10 +472,10 @@ export function MappingStep({
                           aria-pressed={datePolicy === value}
                           className={[
                             "min-w-[180px] flex-1 rounded-control border px-3.5 py-3 text-left",
-                            "transition-[border-color,background-color] duration-200",
+                            "transition-[border-color,background-color,box-shadow] duration-200",
                             datePolicy === value
                               ? "border-brand bg-brand-soft ring-1 ring-brand/20"
-                              : "border-line bg-surface hover:bg-muted/50",
+                              : "border-line bg-surface hover:border-brand/40 hover:bg-brand-soft/40 hover:shadow-sm",
                           ].join(" ")}
                         >
                           <span className="flex items-baseline justify-between gap-2">
@@ -527,10 +527,10 @@ export function MappingStep({
                           aria-pressed={decimalConventions[column] === value}
                           className={[
                             "min-w-[200px] flex-1 rounded-control border px-3.5 py-3 text-left",
-                            "transition-[border-color,background-color] duration-200",
+                            "transition-[border-color,background-color,box-shadow] duration-200",
                             decimalConventions[column] === value
                               ? "border-brand bg-brand-soft ring-1 ring-brand/20"
-                              : "border-line bg-surface hover:bg-muted/50",
+                              : "border-line bg-surface hover:border-brand/40 hover:bg-brand-soft/40 hover:shadow-sm",
                           ].join(" ")}
                         >
                           <span className="block text-[13px] font-semibold">

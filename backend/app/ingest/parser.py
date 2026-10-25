@@ -14,6 +14,7 @@ import csv
 import hashlib
 import io
 from dataclasses import dataclass
+from datetime import date, datetime, time
 
 from app.domain.types import SourceFile, SourceRow
 
@@ -167,6 +168,27 @@ def parse_csv(raw: bytes, filename: str) -> ParsedFile:
     return ParsedFile(source_file=source_file, rows=rows)
 
 
+def _cell_text(cell: object) -> str:
+    """One worksheet cell as text, without interpreting it.
+
+    A date cell in a workbook is already a date: the spreadsheet stored a day,
+    not a string that could be read two ways. openpyxl hands it back as a
+    datetime at midnight, and str() of that is "2026-04-03 00:00:00", which no
+    date policy accepts, so every row would be rejected. It is written here
+    as the ISO date it already is. A cell that carries a time of day keeps it,
+    and every other cell is passed through str() exactly as before.
+    """
+    if cell is None:
+        return ""
+    if isinstance(cell, datetime):
+        if cell.time() == time(0, 0) and cell.tzinfo is None:
+            return cell.date().isoformat()
+        return str(cell)
+    if isinstance(cell, date):
+        return cell.isoformat()
+    return str(cell)
+
+
 def parse_xlsx(raw: bytes, filename: str) -> ParsedFile:
     """Read the first worksheet of an XLSX file.
 
@@ -200,7 +222,7 @@ def parse_xlsx(raw: bytes, filename: str) -> ParsedFile:
     for index, raw_row in enumerate(iterator, start=1):
         if index > MAX_ROWS:
             raise ParseError(f"The worksheet has more than {MAX_ROWS} rows.")
-        cells = ["" if c is None else str(c) for c in raw_row]
+        cells = [_cell_text(c) for c in raw_row]
         if len(cells) > len(columns):
             cells = cells[: len(columns)]
         padded = cells + [""] * (len(columns) - len(cells))
@@ -231,5 +253,5 @@ def parse_upload(raw: bytes, filename: str) -> ParsedFile:
     if lowered.endswith(".xlsx") or lowered.endswith(".xlsm"):
         return parse_xlsx(raw, filename)
     raise ParseError(
-        f"Unsupported file type for {filename}. Upload a CSV or XLSX file."
+        f"Unsupported file type for {filename}. Upload a CSV, TSV, XLSX or XLSM file."
     )

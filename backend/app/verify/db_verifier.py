@@ -25,7 +25,7 @@ from app.domain.types import (
     SourceRow,
     StagedRow,
 )
-from app.domain.verification import verify
+from app.domain.verification import source_rows_by_destination, verify
 
 
 @dataclass
@@ -57,6 +57,9 @@ def verify_run(
     #: Read from the approved plan by the caller, never from a request.
     date_format_policy: str | None = None,
     decimal_conventions: dict[str, str] | None = None,
+    #: Destination column -> the source column the approved plan read it
+    #: from. Read from the approved plan by the caller, like the policies.
+    column_sources: dict[str, str] | None = None,
 ) -> DatabaseVerification:
     """Verify one run against the destination it was staged for.
 
@@ -71,6 +74,9 @@ def verify_run(
     destination profile's own values.
     """
     source_rows: list[SourceRow] = repository.load_source_rows(conn, migration_id)
+    # Every check reads a source value under its destination column name.
+    # A file that names a column differently is read through the plan.
+    source_rows = source_rows_by_destination(source_rows, column_sources)
     staged_records = repository.load_staged_rows(conn, run_id)
 
     staged: list[StagedRow] = [

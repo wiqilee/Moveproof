@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowRight, CheckCircle2, Circle, FileWarning, Loader2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, Circle, CircleDot, FileWarning, Loader2 } from "lucide-react";
 import { TopBar } from "@/components/workspace/TopBar";
 import { PageHeading } from "@/components/workspace/PageHeading";
 import { Button } from "@/components/ui/Button";
@@ -44,7 +44,14 @@ export default function RunPage() {
   // There is no progress figure anywhere here on purpose: the backend reports
   // no percentage, and inventing one would be the reassuring fiction this
   // product exists to avoid.
-  const staging = runPhase === "running";
+  //
+  // The store keeps runPhase at "running" from the moment staging starts until
+  // a verification result exists, so on its own it cannot tell "the executor
+  // is working" from "staged, waiting for the operator". A run result only
+  // exists once staging has finished, which is the distinction this page needs.
+  const staging = runPhase === "running" && !runResult;
+  const verifying = busy === "Running the verifier";
+  const awaitingVerification = Boolean(runResult) && !hasResults && !verifying;
 
   const stages = [
     {
@@ -66,10 +73,17 @@ export default function RunPage() {
       active: false,
     },
     {
-      label: "Ready for verification",
-      detail: "An independent verifier reads the staged rows back",
+      label: verifying ? "Verifying" : "Ready for verification",
+      detail: verifying
+        ? "The independent verifier is reading the staged rows back"
+        : awaitingVerification
+          ? "Waiting for you to run the independent verifier"
+          : "An independent verifier reads the staged rows back",
       done: hasResults,
       active: Boolean(runResult) && !hasResults,
+      // Waiting on the operator is a state, not work in progress, so it gets
+      // a still marker rather than a spinner.
+      waiting: awaitingVerification,
     },
   ];
 
@@ -154,14 +168,24 @@ export default function RunPage() {
                 <span
                   className={[
                     "ml-auto rounded-full px-2.5 py-1 text-[11px] font-semibold",
-                    staging
+                    staging || verifying
                       ? "bg-brand-soft text-brand"
-                      : runResult
-                        ? "bg-ok-soft text-ok"
-                        : "bg-muted text-ink-soft",
+                      : awaitingVerification
+                        ? "bg-warn-soft text-warn"
+                        : runResult
+                          ? "bg-ok-soft text-ok"
+                          : "bg-muted text-ink-soft",
                   ].join(" ")}
                 >
-                  {staging ? "Staging in progress" : runResult ? "Staging complete" : "Not staged"}
+                  {staging
+                    ? "Staging in progress"
+                    : verifying
+                      ? "Verification in progress"
+                      : awaitingVerification
+                        ? "Staged · awaiting verification"
+                        : runResult
+                          ? "Staging complete"
+                          : "Not staged"}
                 </span>
               </div>
               <ol className="divide-y divide-line">
@@ -174,6 +198,8 @@ export default function RunPage() {
                   >
                     {stage.done ? (
                       <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-ok" aria-hidden />
+                    ) : "waiting" in stage && stage.waiting ? (
+                      <CircleDot size={17} className="mt-0.5 shrink-0 text-warn" aria-hidden />
                     ) : stage.active ? (
                       <Loader2 size={17} className="spin mt-0.5 shrink-0 text-brand" aria-hidden />
                     ) : (

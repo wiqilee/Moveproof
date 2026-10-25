@@ -106,6 +106,45 @@ def _row_accounting(result: ExecutionResult) -> Check:
     )
 
 
+def source_rows_by_destination(
+    rows: list[SourceRow], column_sources: dict[str, str] | None
+) -> list[SourceRow]:
+    """Source rows readable under destination column names.
+
+    Every check compares a staged destination column with the source value it
+    came from, and looks that value up by the destination name. A file that
+    names a column differently (RobotID for robot_id) would otherwise be
+    compared against an empty string and reported as changed. Each renamed
+    destination column is therefore read from the source column the approved
+    plan actually mapped into it.
+
+    Columns whose names already match are left exactly as they were, so a
+    file that uses the destination names, which is every fixture and every
+    earlier migration, is verified identically. The original values are kept
+    alongside, never removed.
+    """
+    renamed = {
+        destination: source
+        for destination, source in (column_sources or {}).items()
+        if destination != source
+    }
+    if not renamed:
+        return rows
+    return [
+        SourceRow(
+            row_number=row.row_number,
+            values={
+                **row.values,
+                **{
+                    destination: row.values.get(source, "")
+                    for destination, source in renamed.items()
+                },
+            },
+        )
+        for row in rows
+    ]
+
+
 def _identifier_preservation(
     by_row: dict[int, SourceRow],
     result: ExecutionResult,
