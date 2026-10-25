@@ -48,7 +48,7 @@ Treat every deployment as capable of handling sensitive data, even when the prod
 
 ### Uploaded files are untrusted
 
-CSV and XLSX files are treated as untrusted input.
+CSV, TSV, XLSX, and XLSM files are treated as untrusted input.
 
 The application validates file type, file size, structure, and parsing behavior before data enters the migration workflow.
 
@@ -60,7 +60,7 @@ Formula-like values are preserved as uploaded data and are escaped or neutralize
 
 Model output is treated as untrusted input.
 
-The NVIDIA model served through Nebius Token Factory proposes mappings, identifies risks, assists with failure diagnosis, and can propose repairs. It does not directly control the executor.
+The NVIDIA models served through Nebius Token Factory propose column mappings and attach a risk note to each mapping. Failure diagnosis and repair proposals are produced by deterministic backend code, not by a model. The models do not directly control the executor.
 
 Every proposed transformation must pass deterministic validation against the supported operation allowlist.
 
@@ -262,9 +262,10 @@ The deployed architecture separates responsibilities as follows:
 
 Adding `robot_calibration_v1` does not add a provider, secret, browser credential, IAM role, or model authority. It adds a server-defined data contract and destination tables inside the existing trust boundaries.
 
-The production NVIDIA model is:
+The production NVIDIA models are:
 
-`nvidia/nemotron-3-super-120b-a12b`
+- `nvidia/nemotron-3-super-120b-a12b`, the default for every model-assisted proposal;
+- `nvidia/Nemotron-3-Ultra-550b-a55b`, called only when deterministic validation finds two or more interpretation concerns. It receives the same bounded input and gains no additional authority.
 
 Google Cloud does not provide model inference for MoveProof.
 

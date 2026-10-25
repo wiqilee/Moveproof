@@ -92,7 +92,7 @@ Google Cloud does not provide model inference for MoveProof. Vertex AI and Gemin
 
 Nebius and Tavily have separate roles:
 
-- Nebius assists with mapping, risk analysis, diagnosis, and repair proposals.
+- Nebius assists with mapping proposals and per-mapping risk notes. Failure diagnosis and repair proposals are deterministic backend logic and do not call a model.
 - Tavily retrieves external public references that may help a human resolve semantic ambiguity.
 - Neither provider can bypass deterministic validation, human approval, independent verification, or the database-backed commit gate.
 
@@ -382,7 +382,9 @@ The build configuration currently publishes `backend:latest`. Do not deploy that
 
 ```bash
 IMAGE_LATEST="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/moveproof/backend:latest"
-IMAGE_DIGEST=$(gcloud artifacts docker images describe "$IMAGE_LATEST"   --project="$GCP_PROJECT_ID"   --format='value(image_summary.digest)')
+IMAGE_DIGEST=$(gcloud artifacts docker images describe "$IMAGE_LATEST" \
+  --project="$GCP_PROJECT_ID" \
+  --format='value(image_summary.digest)')
 IMAGE_REF="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/moveproof/backend@$IMAGE_DIGEST"
 
 printf 'Pinned backend image: %s\n' "$IMAGE_REF"
@@ -445,11 +447,17 @@ gcloud run services replace \
 Confirm that Cloud Run actually created or selected the intended revision and that the revision points at the pinned digest:
 
 ```bash
-LATEST_REVISION=$(gcloud run services describe moveproof-backend   --region="$GCP_REGION"   --project="$GCP_PROJECT_ID"   --format='value(status.latestReadyRevisionName)')
+LATEST_REVISION=$(gcloud run services describe moveproof-backend \
+  --region="$GCP_REGION" \
+  --project="$GCP_PROJECT_ID" \
+  --format='value(status.latestReadyRevisionName)')
 
 echo "$LATEST_REVISION"
 
-gcloud run revisions describe "$LATEST_REVISION"   --region="$GCP_REGION"   --project="$GCP_PROJECT_ID"   --format='value(spec.containers[0].image)'
+gcloud run revisions describe "$LATEST_REVISION" \
+  --region="$GCP_REGION" \
+  --project="$GCP_PROJECT_ID" \
+  --format='value(spec.containers[0].image)'
 ```
 
 Do not treat a deploy command that reused a mutable `:latest` reference as proof that the running backend changed. The revision and image check above is part of deployment verification.
@@ -795,7 +803,7 @@ Direct Token Factory access to the Ultra model has also been verified separately
 
 Tavily External Evidence Check has been verified through a real production runtime call.
 
-Adaptive Super-to-Ultra routing has been verified end to end in production. Robotics remains a separate production claim and must not be marked verified until the robotics checks below pass on the deployed revision.
+Adaptive Super-to-Ultra routing has been verified end to end in production. Robotics is a separate production claim, verified through the robotics checks below on the deployed revision.
 
 ### Robotics production verification
 
@@ -819,7 +827,8 @@ source .venv/bin/activate
 
 make migrate
 pytest -m "not database" -v
-DATABASE_URL="postgresql://moveproof:moveproof_local_only@localhost:5433/moveproof"   pytest -m database -v
+DATABASE_URL="postgresql://moveproof:moveproof_local_only@localhost:5433/moveproof" \
+  pytest -m database -v
 pytest tests/test_model_routing.py tests/test_date_policy_inference.py tests/test_robotics_workflow.py tests/test_robotics_verification.py tests/test_destination_profiles.py -v -m "not database"
 make rust-test
 ```

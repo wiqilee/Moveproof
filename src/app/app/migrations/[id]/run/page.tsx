@@ -2,7 +2,15 @@
 
 import { useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowRight, CheckCircle2, Circle, CircleDot, FileWarning, Loader2 } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  ChevronDown,
+  Circle,
+  CircleDot,
+  FileWarning,
+  Loader2,
+} from "lucide-react";
 import { TopBar } from "@/components/workspace/TopBar";
 import { PageHeading } from "@/components/workspace/PageHeading";
 import { Button } from "@/components/ui/Button";
@@ -285,8 +293,13 @@ export default function RunPage() {
 
                 {/* Technical detail, kept and available, visually subordinate. */}
                 <details className="group mt-3 overflow-hidden rounded-card border border-line bg-surface">
-                  <summary className="cursor-pointer list-none px-5 py-3 text-[13px] font-semibold text-ink-soft transition-colors hover:bg-muted/50">
-                    Row accounting, stated as arithmetic
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3 text-[13px] font-semibold text-brand transition-colors hover:bg-brand-soft/50 [&::-webkit-details-marker]:hidden">
+                    <span>Row accounting, stated as arithmetic</span>
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-ink-soft">
+              <span className="group-open:hidden">Show</span>
+              <span className="hidden group-open:inline">Hide</span>
+              <ChevronDown size={14} className="transition-transform duration-200 group-open:rotate-180" aria-hidden />
+            </span>
                   </summary>
                   <div className="border-t border-line px-5 py-4">
                     <p className="font-mono text-[13px] leading-loose">

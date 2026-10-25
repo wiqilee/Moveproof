@@ -37,8 +37,11 @@ export function ThemeToggle({ variant = "compact" }: { variant?: "compact" | "fu
               aria-checked={selected}
               onClick={() => setPreference(option.value)}
               className={[
-                "inline-flex items-center gap-1.5 rounded-[7px] px-3 py-1.5 text-[13px] font-medium transition-colors",
-                selected ? "bg-muted text-ink" : "text-ink-soft hover:text-ink",
+                "inline-flex items-center gap-1.5 rounded-[7px] border px-3 py-1.5 text-[13px] font-medium",
+                "transition-[color,background-color,border-color] duration-200",
+                selected
+                  ? "border-brand/30 bg-brand-soft text-ink"
+                  : "border-transparent text-ink-soft hover:border-brand/40 hover:bg-brand-soft/50 hover:text-ink",
               ].join(" ")}
             >
               <option.icon size={14} aria-hidden />

@@ -120,16 +120,30 @@ const SEVERITY: Record<string, { label: string; className: string; icon: typeof 
 };
 
 function MappingNote({ note, review }: { note: string; review: boolean }) {
-  const severity = SEVERITY[note.trim().toLowerCase()];
+  const text = note.trim();
+  // The model often writes a level followed by its reason, such as
+  // "high (mixed thousand/decimal separators)". The level becomes the same
+  // chip as a bare "high", and the reason stays beside it as prose, so every
+  // level reads the same way on screen whatever wording the model used.
+  const match = text.match(/^(low|medium|high)\b[\s:,-]*\(?(.*?)\)?\.?$/i);
+  const severity = match ? SEVERITY[match[1].toLowerCase()] : undefined;
 
   if (severity) {
     const Icon = severity.icon;
+    const reason = match?.[2]?.trim();
     return (
-      <span
-        className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${severity.className}`}
-      >
-        <Icon size={11} strokeWidth={2.75} aria-hidden />
-        {severity.label} risk
+      <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${severity.className}`}
+        >
+          <Icon size={11} strokeWidth={2.75} aria-hidden />
+          {severity.label} risk
+        </span>
+        {reason && (
+          <span className="text-xs leading-relaxed text-ink-soft">
+            {reason.charAt(0).toUpperCase() + reason.slice(1)}
+          </span>
+        )}
       </span>
     );
   }
@@ -658,7 +672,7 @@ export function ReviewStep({
         }
       />
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid items-start gap-4 lg:grid-cols-2">
         <div className="overflow-hidden rounded-card border border-line bg-surface shadow-sm">
           <h3 className="border-b border-line bg-muted/40 px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
             Scope
@@ -715,9 +729,11 @@ export function ReviewStep({
                     className="flex items-start gap-2.5 text-[13px] leading-relaxed"
                   >
                     <AlertTriangle size={13} className="mt-0.5 shrink-0 text-warn" aria-hidden />
-                    <span>
+                    <span className="min-w-0">
                       <span className="font-mono font-semibold">{mapping.source_column}</span>
-                      {mapping.note ? `: ${mapping.note}` : ""}
+                      {/* The same risk chip the mapping table shows, so a level
+                          reads identically on both steps. */}
+                      {mapping.note && <MappingNote note={mapping.note} review />}
                     </span>
                   </li>
                 ))}

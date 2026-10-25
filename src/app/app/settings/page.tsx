@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import {
   Activity,
+  Check,
+  Copy,
   Cpu,
+  ExternalLink,
   Database,
   FileText,
   Globe,
@@ -20,6 +23,63 @@ import { useTheme } from "@/lib/theme";
 import { API_BASE_URL, api } from "@/lib/api-client";
 import type { ApiDestinationProfile } from "@/lib/api-types";
 import { routes } from "@/lib/routes";
+
+/**
+ * Copy a value to the clipboard, and say so for a moment.
+ *
+ * The clipboard API needs a secure context; the fallback covers a browser
+ * that refuses it, so the button never silently does nothing.
+ */
+function CopyButton({ value, label, className = "" }: { value: string; label: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+    } catch {
+      const field = document.createElement("textarea");
+      field.value = value;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      try {
+        setCopied(document.execCommand("copy"));
+      } finally {
+        document.body.removeChild(field);
+      }
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void copy()}
+      aria-label={copied ? `${label} copied` : `Copy ${label}`}
+      title={copied ? "Copied" : `Copy ${label}`}
+      className={[
+        "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border transition-colors duration-200",
+        copied
+          ? "border-ok/40 bg-ok-soft text-ok"
+          : "border-transparent text-ink-soft hover:border-brand/40 hover:bg-brand-soft/60 hover:text-brand",
+        className,
+      ].join(" ")}
+    >
+      {copied ? <Check size={12} strokeWidth={2.5} aria-hidden /> : <Copy size={12} aria-hidden />}
+      <span className="sr-only" aria-live="polite">
+        {copied ? "Copied" : ""}
+      </span>
+    </button>
+  );
+}
 
 /**
  * Settings that actually do something.
@@ -164,6 +224,8 @@ export default function SettingsPage() {
         segmentOff: "bg-[#475569]",
         card: "border-white/10 bg-white/[0.03] hover:border-[#60a5fa]/40 hover:bg-white/[0.06]",
         iconBox: "border-white/10 bg-[#0b1222] text-[#93c5fd]",
+        // The title lights with the icon, so the whole card reads as one target.
+        titleLit: "group-hover/cap:border-[#60a5fa]/50 group-hover/cap:bg-white/[0.06]",
         iconLit: "group-hover/cap:border-[#60a5fa] group-hover/cap:bg-[#2563eb] group-hover/cap:text-white group-hover/cap:shadow-[0_0_0_4px_rgba(96,165,250,0.15),0_0_16px_rgba(96,165,250,0.6)]",
         badgeOff: "bg-white/5 text-[#a3b1c6]",
         role: "text-[#93c5fd]",
@@ -183,6 +245,7 @@ export default function SettingsPage() {
         segmentOff: "bg-ink-soft/30",
         card: "border-line bg-surface/80 hover:border-brand/40 hover:shadow-sm",
         iconBox: "border-brand/20 bg-brand-soft text-brand",
+        titleLit: "group-hover/cap:border-brand/40 group-hover/cap:bg-brand-soft/60",
         iconLit: "group-hover/cap:border-brand group-hover/cap:bg-brand group-hover/cap:text-on-brand group-hover/cap:shadow-[0_0_0_4px_rgb(var(--color-brand)/0.15),0_0_16px_rgb(var(--color-brand)/0.5)]",
         badgeOff: "bg-muted text-ink-soft",
         role: "text-brand",
@@ -278,9 +341,27 @@ export default function SettingsPage() {
                 />
                 {checking ? "Checking" : "Refresh"}
               </button>
-              <p className={["font-mono text-[11px]", ui.soft].join(" ")}>
-                {hostOf(API_BASE_URL)}
-                {checkedAt && ` · checked ${checkedAt.toLocaleTimeString()}`}
+              <p
+                className={[
+                  "flex flex-wrap items-center gap-1 font-mono text-[11px]",
+                  ui.soft,
+                ].join(" ")}
+              >
+                <span>{hostOf(API_BASE_URL)}</span>
+                <CopyButton value={API_BASE_URL} label="API base URL" />
+                {/* The backend has no page at its root; /health is the address
+                    that opens meaningfully in a browser. */}
+                <a
+                  href={`${API_BASE_URL.replace(/\/$/, "")}/health`}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Open the backend health endpoint in a new tab"
+                  title="Open /health in a new tab"
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-transparent text-ink-soft transition-colors duration-200 hover:border-brand/40 hover:bg-brand-soft/60 hover:text-brand"
+                >
+                  <ExternalLink size={12} aria-hidden />
+                </a>
+                {checkedAt && <span>· checked {checkedAt.toLocaleTimeString()}</span>}
               </p>
             </div>
           </div>
@@ -332,7 +413,19 @@ export default function SettingsPage() {
                     {!known ? "unknown" : available ? "available" : "not available"}
                   </span>
                 </div>
-                <p className="mt-3 text-sm font-semibold">{label}</p>
+                {/* The title gets a frame rather than a colour, so it never
+                    reads like the blue role line beneath it. */}
+                <p className="mt-3">
+                  <span
+                    className={[
+                      "-mx-1.5 inline-block rounded-md border border-transparent px-1.5 text-sm font-semibold",
+                      "transition-[border-color,background-color] duration-200",
+                      ui.titleLit,
+                    ].join(" ")}
+                  >
+                    {label}
+                  </span>
+                </p>
                 <p className={["font-mono text-[11px]", ui.role].join(" ")}>{role}</p>
                 <p className={["mt-2 text-xs leading-relaxed", ui.soft].join(" ")}>{detail}</p>
               </li>
@@ -386,13 +479,26 @@ export default function SettingsPage() {
                       )}
                     </div>
                     <p className="mt-0.5 font-mono text-[11px] text-brand">{profile.id}</p>
+                    {isDefault && (
+                      // Without this, Default reads like a recommendation.
+                      <p className="mt-1 text-[11px] text-ink-soft">
+                        Default for backward compatibility: migrations recorded
+                        before destination profiles existed resolve here.
+                      </p>
+                    )}
                     <p className="mb-4 mt-2 text-xs leading-relaxed text-ink-soft">
                       {profile.description}
                     </p>
                     <dl className="mt-auto grid grid-cols-[1.7fr_0.6fr_1fr] gap-2 border-t border-line pt-3">
                       {[
                         ["Table", profile.destination_table],
-                        ["Schema", `v${profile.schema_version}`],
+                        // The registry already reports "v1"; prefixing again showed "vv1".
+                        [
+                          "Schema",
+                          profile.schema_version.startsWith("v")
+                            ? profile.schema_version
+                            : `v${profile.schema_version}`,
+                        ],
                         ["Columns", `${profile.column_count} · ${profile.required_count} req`],
                       ].map(([key, value]) => (
                         <div key={key} className="min-w-0">
@@ -434,7 +540,10 @@ export default function SettingsPage() {
             <dl className="mt-3 space-y-2 text-sm">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <dt className="text-ink-soft">API base URL</dt>
-                <dd className="break-all font-mono text-xs">{API_BASE_URL}</dd>
+                <dd className="flex min-w-0 items-center gap-1.5">
+                  <span className="break-all font-mono text-xs">{API_BASE_URL}</span>
+                  <CopyButton value={API_BASE_URL} label="API base URL" />
+                </dd>
               </div>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <dt className="text-ink-soft">Upload limit</dt>

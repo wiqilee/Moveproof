@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRightLeft, Bot, Eye, Info, Loader2, Upload } from "lucide-react";
+import { ArrowRightLeft, Bot, Eye, Info, Loader2, Upload, Users } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
 /**
@@ -83,6 +83,33 @@ export const DEMO_DATASETS: DemoDataset[] = [
     profile: "robot_calibration_v1",
     rows: 5,
   },
+  {
+    // A byte-identical copy of backend/tests/fixtures/clean.csv, the fixture
+    // the documented legacy-import failure and repair runs against.
+    id: "customers-leading-zeros",
+    file: "customers_clean.csv",
+    name: "Customer records, leading zeros",
+    purpose:
+      "Four customers whose IDs start with zeros. Run it under the legacy import profile to watch an import finish and verification refuse it.",
+    experience: "Failure and repair · deterministic",
+    demonstrates: [
+      "customer_id 00127 must stay 00127, never 127",
+      "Under the legacy import profile, identifier preservation fails and commit is refused",
+      "The deterministic repair keeps identifiers as text and reruns from the original bytes",
+    ],
+    profile: "customers_v1",
+    rows: 4,
+  },
+];
+
+/**
+ * How the library is grouped on screen. Robotics comes first and is marked
+ * featured, because it is the scenario the demo video walks through; the
+ * order of its three datasets is unchanged.
+ */
+const DEMO_GROUPS: { profile: string; title: string; featured: boolean; icon: typeof Bot }[] = [
+  { profile: "robot_calibration_v1", title: "Robotics calibration", featured: true, icon: Bot },
+  { profile: "customers_v1", title: "Customer records", featured: false, icon: Users },
 ];
 
 /**
@@ -213,8 +240,7 @@ export function DemoLibrary({
     }
   };
 
-  // Datasets that target the destination chosen above. Every current fixture
-  // is a robotics fixture, so choosing Customer records leaves none usable.
+  // Datasets that target the destination chosen above.
   const matching = DEMO_DATASETS.filter(
     (dataset) => !selectedProfile || dataset.profile === selectedProfile
   );
@@ -288,7 +314,63 @@ export function DemoLibrary({
         </div>
       )}
 
-      {DEMO_DATASETS.map((dataset) => {
+      {DEMO_GROUPS.map((group) => {
+        const datasets = DEMO_DATASETS.filter((dataset) => dataset.profile === group.profile);
+        if (datasets.length === 0) return null;
+        const GroupIcon = group.icon;
+        const groupOffered = availableProfiles.includes(group.profile);
+        const groupMismatched = Boolean(selectedProfile) && group.profile !== selectedProfile;
+        return (
+          <section
+            key={group.profile}
+            aria-labelledby={`demo-group-${group.profile}`}
+            className="space-y-3 pt-1 first:pt-0"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+              <h3
+                id={`demo-group-${group.profile}`}
+                className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-soft"
+              >
+                <GroupIcon size={13} aria-hidden />
+                {group.title}
+                <span className="font-mono normal-case tracking-normal text-ink-soft/70">
+                  {datasets.length} {datasets.length === 1 ? "dataset" : "datasets"}
+                </span>
+                {group.featured && (
+                  <span className="rounded-full border border-[#14b8a6]/40 bg-[#14b8a6]/10 px-2 py-0.5 text-[10px] font-bold tracking-wider text-[#0f766e] dark:text-[#5eead4]">
+                    Featured
+                  </span>
+                )}
+              </h3>
+              {/* The way into this group when another destination is chosen
+                  above. Switching is always explicit; a dataset never changes
+                  the destination by itself. */}
+              {groupMismatched && groupOffered && onSwitchProfile && (
+                <span className="relative inline-flex shrink-0 rounded-control p-[2px]">
+                  {group.featured && (
+                    <span
+                      aria-hidden
+                      className="mp-demo-ring mp-demo-ring-strong pointer-events-none absolute inset-0 rounded-control"
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onSwitchProfile(group.profile)}
+                    disabled={disabled}
+                    className={[
+                      "relative inline-flex items-center gap-2 whitespace-nowrap rounded-[7px] px-3.5 py-1.5 text-[12px] font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5eead4] focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-60",
+                      group.featured
+                        ? "bg-[#0d9488] text-white shadow-[0_8px_20px_-12px_rgba(13,148,136,0.8)] hover:bg-[#0f766e]"
+                        : "border border-line bg-surface text-ink hover:border-[#14b8a6]/45 hover:bg-[#14b8a6]/[0.07]",
+                    ].join(" ")}
+                  >
+                    <ArrowRightLeft size={13} aria-hidden />
+                    Switch to {nameOf(group.profile)}
+                  </button>
+                </span>
+              )}
+            </div>
+            {datasets.map((dataset) => {
         const open = preview?.id === dataset.id;
         // The server decides which destinations exist. An empty list means the
         // backend advertised none, so nothing here is actionable.
@@ -336,7 +418,7 @@ export function DemoLibrary({
                   ].join(" ")}
                   aria-hidden
                 >
-                  <Bot size={17} />
+                  <GroupIcon size={17} />
                 </span>
                 <h3
                   className={[
@@ -449,6 +531,9 @@ export function DemoLibrary({
             </div>
           </article>
           </div>
+        );
+            })}
+          </section>
         );
       })}
     </div>

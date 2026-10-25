@@ -501,7 +501,7 @@ Twelve hazard kinds are planted: leading zero identifiers, exact duplicates, con
 
 ### Walking the demonstration
 
-1. Upload `backend/tests/fixtures/clean.csv` at `/app/migrations/new`.
+1. Upload `backend/tests/fixtures/clean.csv` at `/app/migrations/new`, or choose **Try demo data** with the **Customer records** destination and use **Customer records, leading zeros**, which uploads a byte-identical copy of the same file.
 2. On the mapping step choose the **legacy import profile**. It casts `customer_id` to an integer, exactly as an older importer would.
 3. The approve button stays disabled until you tick the acknowledgement. Tick it and approve.
 4. Stage and run, then run verification.
@@ -902,10 +902,11 @@ Moveproof/
 │   └── DEMO.md                             Three minute demo storyboard
 │
 ├── public/
-│   ├── demo/                               Tracked robotics fixtures, served statically
+│   ├── demo/                               Tracked fixtures for the Demo Library, served statically
 │   │   ├── robot_calibration_clean.csv
 │   │   ├── robot_calibration_ambiguous.csv
-│   │   └── robot_calibration_multi_joint.csv
+│   │   ├── robot_calibration_multi_joint.csv
+│   │   └── customers_clean.csv             Byte-identical copy of backend/tests/fixtures/clean.csv
 │   ├── logo.svg                            Horizontal lockup
 │   ├── logo-mark.svg                       Square mark
 │   ├── logo-light.svg                      For dark surfaces

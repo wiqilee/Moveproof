@@ -136,7 +136,7 @@ export function VerificationResults({
                   "transition-[border-color,background-color,box-shadow] duration-200",
                   active
                     ? "border-navy bg-surface shadow-sm ring-1 ring-navy/20"
-                    : "border-transparent hover:border-line hover:bg-surface",
+                    : "border-transparent hover:border-brand/50 hover:bg-surface hover:shadow-sm",
                   stat.value === 0 ? "opacity-70" : "",
                 ].join(" ")}
               >

@@ -7,6 +7,7 @@ import {
   Info,
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
   Download,
   ExternalLink,
   FileText,
@@ -509,8 +510,13 @@ export function EvidenceReportView({
           />
         </div>
         <details className="group border-t border-line">
-          <summary className="cursor-pointer list-none px-5 py-3 text-[13px] font-semibold text-ink-soft transition-colors hover:bg-muted/50">
-            Approved transformations ({evidence.plan.mappings.length})
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3 text-[13px] font-semibold text-brand transition-colors hover:bg-brand-soft/50 [&::-webkit-details-marker]:hidden">
+            <span>Approved transformations ({evidence.plan.mappings.length})</span>
+            <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-ink-soft">
+              <span className="group-open:hidden">Show</span>
+              <span className="hidden group-open:inline">Hide</span>
+              <ChevronDown size={14} className="transition-transform duration-200 group-open:rotate-180" aria-hidden />
+            </span>
           </summary>
           <ul className="divide-y divide-line border-t border-line">
             {evidence.plan.mappings.map((mapping) => (
@@ -549,8 +555,13 @@ export function EvidenceReportView({
         </p>
         {evidence.execution.applied_operations.length > 0 && (
           <details className="group border-t border-line">
-            <summary className="cursor-pointer list-none px-5 py-3 text-[13px] font-semibold text-ink-soft transition-colors hover:bg-muted/50">
-              Applied operations ({evidence.execution.applied_operations.length})
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3 text-[13px] font-semibold text-brand transition-colors hover:bg-brand-soft/50 [&::-webkit-details-marker]:hidden">
+              <span>Applied operations ({evidence.execution.applied_operations.length})</span>
+              <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-ink-soft">
+              <span className="group-open:hidden">Show</span>
+              <span className="hidden group-open:inline">Hide</span>
+              <ChevronDown size={14} className="transition-transform duration-200 group-open:rotate-180" aria-hidden />
+            </span>
             </summary>
             <ul className="flex flex-wrap gap-1.5 border-t border-line px-5 py-3">
               {evidence.execution.applied_operations.map((operation) => (
@@ -619,8 +630,13 @@ export function EvidenceReportView({
           ))}
         </ul>
         <details className="group border-t border-line">
-          <summary className="cursor-pointer list-none px-5 py-3 text-[13px] font-semibold text-ink-soft transition-colors hover:bg-muted/50">
-            Expected and observed, per check
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3 text-[13px] font-semibold text-brand transition-colors hover:bg-brand-soft/50 [&::-webkit-details-marker]:hidden">
+            <span>Expected and observed, per check</span>
+            <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-ink-soft">
+              <span className="group-open:hidden">Show</span>
+              <span className="hidden group-open:inline">Hide</span>
+              <ChevronDown size={14} className="transition-transform duration-200 group-open:rotate-180" aria-hidden />
+            </span>
           </summary>
           <ul className="divide-y divide-line border-t border-line">
             {evidence.verification.checks.map((check) => (
